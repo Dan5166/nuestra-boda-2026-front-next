@@ -56,15 +56,18 @@ function TimeBox({ label, value }: TimeBoxProps) {
 }
 
 export default function WeddingCountdown() {
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>(getTimeLeft());
+  const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
 
   useEffect(() => {
+    setTimeLeft(getTimeLeft());
     const interval = setInterval(() => {
       setTimeLeft(getTimeLeft());
     }, 1000);
 
     return () => clearInterval(interval);
   }, []);
+
+  if (!timeLeft) return null;
 
   if (timeLeft.finished) {
     return (

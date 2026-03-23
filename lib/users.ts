@@ -189,3 +189,24 @@ export async function getSummaryByCodigo(codigo: string) {
     cerrado: new Date() > RSVP_DEADLINE,
   };
 }
+
+export async function getAllUsers() {
+  const result = await dynamoClient.send(
+    new ScanCommand({ TableName: TABLE_NAME })
+  );
+
+  if (!result.Items) return [];
+
+  return result.Items.map((item) => ({
+    userId: item.userId ?? '',
+    nombre: item.nombre ?? '',
+    codigo: (item.PK as string)?.replace('CODE#', '') ?? '',
+    estado: item.estado ?? 'pendiente',
+    telefono: item.telefono ?? null,
+    mail: item.mail ?? null,
+    alergiaAlimentaria: item.alergiaAlimentaria ?? null,
+    otrasAlergias: item.otrasAlergias ?? null,
+    mensaje: item.mensaje ?? null,
+    rsvpAt: item.rsvpAt ?? null,
+  }));
+}
