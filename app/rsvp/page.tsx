@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Loader from "../components/Loader";
 import ConfirmModal from "../components/ConfirmModal";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export const EstadoUsuario = {
   PENDIENTE: "pendiente",
@@ -34,7 +32,7 @@ interface Invitado {
   mensaje?: string;
 }
 
-export default function RSVPPage() {
+function RSVPContent() {
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get("code")?.toUpperCase() || "";
   const router = useRouter();
@@ -57,7 +55,7 @@ export default function RSVPPage() {
     setLoadingCode(true);
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/users/by-code/${codigoABuscar}`);
+      const res = await fetch(`/api/users/by-code/${codigoABuscar}`);
       if (!res.ok) throw new Error();
 
       const data = await res.json();
@@ -125,7 +123,7 @@ export default function RSVPPage() {
           mensaje: inv.mensaje || undefined,
         };
 
-        const res = await fetch(`${API_URL}/users/${inv.userId}/rsvp`, {
+        const res = await fetch(`/api/users/${inv.userId}/rsvp`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -323,5 +321,13 @@ export default function RSVPPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function RSVPPage() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <RSVPContent />
+    </Suspense>
   );
 }

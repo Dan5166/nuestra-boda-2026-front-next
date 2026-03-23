@@ -2,17 +2,15 @@
 
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import BotonesRegaloYTransferencia from "../components/BotonesRegaloYTransferencia";
 import Loader from "../components/Loader";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface Invitado {
   nombre: string;
 }
 
-export default function Invitation() {
+function InvitationContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const codeFromUrl = searchParams.get("code")?.toUpperCase() || "";
@@ -33,7 +31,7 @@ export default function Invitation() {
     setErrorMsg("");
 
     try {
-      const res = await fetch(`${API_URL}/users/by-code/${codigo}`);
+      const res = await fetch(`/api/users/by-code/${codigo}`);
       if (!res.ok) throw new Error("Código inválido");
 
       const data = await res.json();
@@ -205,5 +203,13 @@ export default function Invitation() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Invitation() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <InvitationContent />
+    </Suspense>
   );
 }
