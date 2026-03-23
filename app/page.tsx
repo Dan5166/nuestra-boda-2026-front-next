@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import WeddingCountdown from "./components/WeddingCountdown";
 import BotonesRegaloYTransferencia from "./components/BotonesRegaloYTransferencia";
 import WeddingMap from "./components/WeddingMap";
@@ -29,7 +29,7 @@ const images = [
   "/assets/1-153.webp",
 ];
 
-export default function Home() {
+function HomeContent() {
   const [mostrarMapa, setMostrarMapa] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -238,5 +238,13 @@ export default function Home() {
         Dominic & Danyael · 2026 · Con amor 💛
       </footer>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <HomeContent />
+    </Suspense>
   );
 }
