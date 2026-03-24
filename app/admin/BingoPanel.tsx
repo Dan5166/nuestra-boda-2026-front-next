@@ -116,8 +116,25 @@ function CardViewer({
   onRefresh: () => void;
 }) {
   const [overrideCell, setOverrideCell] = useState<EnrichedCell | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const sorted = [...card.cells].sort((a, b) => a.position - b.position);
   const cols = Math.round(Math.sqrt(card.totalCells));
+
+  async function handleDelete(cell: EnrichedCell) {
+    if (!confirm(`¿Borrar la foto de la casilla "${cell.targetNames[0]}" de ${card.codigo}?`)) return;
+    setDeleting(cell.position);
+    try {
+      const res = await fetch(`/api/admin/bingo/cards/${card.codigo}/${cell.position}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      onRefresh();
+    } catch {
+      alert("No se pudo borrar");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   return (
     <div className="border border-[#e8d9c0] rounded-xl p-4">
@@ -185,6 +202,17 @@ function CardViewer({
                   </button>
                 )}
               </div>
+
+              {done && (
+                <button
+                  onClick={() => handleDelete(cell)}
+                  disabled={deleting === cell.position}
+                  className="absolute top-0.5 right-0.5 z-20 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] flex items-center justify-center hover:bg-red-500 transition disabled:opacity-50"
+                  title="Borrar foto"
+                >
+                  {deleting === cell.position ? "…" : "✕"}
+                </button>
+              )}
             </div>
           );
         })}

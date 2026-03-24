@@ -90,6 +90,25 @@ export async function completeBingoCell(
   return updated;
 }
 
+/**
+ * Clear a completed cell, returning the old mediaKey (so the caller can delete from S3/DynamoDB).
+ */
+export async function resetBingoCell(
+  codigo: string,
+  position: number
+): Promise<string | null> {
+  const card = await getBingoCard(codigo);
+  if (!card) return null;
+  const cell = card.cells.find((c) => c.position === position);
+  if (!cell) return null;
+  const oldKey = cell.mediaKey;
+  const cells = card.cells.map((c) =>
+    c.position === position ? { ...c, completedAt: null, mediaKey: null } : c
+  );
+  await saveBingoCard({ ...card, cells, completedAt: null });
+  return oldKey;
+}
+
 export async function overrideBingoCell(
   codigo: string,
   position: number,

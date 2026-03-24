@@ -1,12 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyJwt, COOKIE_NAME } from '@/lib/auth';
-import { overrideBingoCell } from '@/lib/bingo';
+import { overrideBingoCell, resetBingoCell } from '@/lib/bingo';
+import { deleteUpload } from '@/lib/s3';
+import { deleteMediaMetadata } from '@/lib/gallery';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   return token ? verifyJwt(token) : null;
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ codigo: string; position: string }> }
+) {
+  if (!(await requireAdmin())) return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
+
+  try {
+    const { codigo, position } = await params;
+    const oldKey = await resetBingoCell(codigo, Number(position));
+    if (oldKey) {
+      await Promise.all([deleteUpload(oldKey), deleteMediaMetadata(oldKey)]);
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ message: 'Error interno' }, { status: 500 });
+  }
 }
 
 export async function PATCH(

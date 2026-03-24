@@ -173,13 +173,42 @@ function UploadModal({
 function BingoGrid({
   card,
   cols,
+  codigo,
   onCellClick,
+  onCardUpdate,
 }: {
   card: Card;
   cols: number;
+  codigo: string;
   onCellClick: (cell: Cell) => void;
+  onCardUpdate: (card: Card) => void;
 }) {
+  const [deleting, setDeleting] = useState<number | null>(null);
   const sorted = [...card.cells].sort((a, b) => a.position - b.position);
+
+  async function handleDelete(cell: Cell, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`¿Borrar la foto de "${cell.targetNames.join(" y ")}"?`)) return;
+    setDeleting(cell.position);
+    try {
+      const res = await fetch("/api/bingo/delete-cell", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo, position: cell.position }),
+      });
+      if (!res.ok) throw new Error();
+      // Reload card from server to get updated state
+      const cardRes = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
+      if (cardRes.ok) {
+        const data = await cardRes.json();
+        if (data.card) onCardUpdate(data.card);
+      }
+    } catch {
+      alert("No se pudo borrar la foto");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   return (
     <div
@@ -189,33 +218,23 @@ function BingoGrid({
       {sorted.map((cell) => {
         const done = cell.completedAt !== null;
         return (
-          <button
+          <div
             key={cell.position}
             onClick={() => !done && onCellClick(cell)}
-            disabled={done}
             className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 border-2 transition-all duration-200 ${
               done
-                ? "border-[#d4af37] bg-[#d4af37]/10 cursor-default"
-                : "border-[#e8d9c0] bg-white hover:border-[#d4af37] hover:shadow-md active:scale-95"
+                ? "border-[#d4af37] bg-[#d4af37]/10"
+                : "border-[#e8d9c0] bg-white hover:border-[#d4af37] hover:shadow-md active:scale-95 cursor-pointer"
             }`}
           >
             {done && cell.mediaUrl && (
               <>
-                {cell.mediaKey?.match(/\.(mp4|mov|webm)$/i) ? (
-                  <video
-                    src={cell.mediaUrl}
-                    className="absolute inset-0 w-full h-full object-cover rounded-[10px]"
-                    muted
-                    playsInline
-                  />
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={cell.mediaUrl}
-                    alt="bingo"
-                    className="absolute inset-0 w-full h-full object-cover rounded-[10px]"
-                  />
-                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={cell.mediaUrl}
+                  alt="bingo"
+                  className="absolute inset-0 w-full h-full object-cover rounded-[10px]"
+                />
                 <div className="absolute inset-0 bg-black/30 rounded-[10px]" />
               </>
             )}
@@ -233,7 +252,18 @@ function BingoGrid({
                 </div>
               )}
             </div>
-          </button>
+
+            {done && (
+              <button
+                onClick={(e) => handleDelete(cell, e)}
+                disabled={deleting === cell.position}
+                className="absolute top-1 right-1 z-20 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] flex items-center justify-center hover:bg-red-500 transition disabled:opacity-50"
+                title="Borrar foto"
+              >
+                {deleting === cell.position ? "…" : "✕"}
+              </button>
+            )}
+          </div>
         );
       })}
     </div>
@@ -295,9 +325,14 @@ function BingoContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleCellDone(updatedCard: Card) {
-    setCard(updatedCard);
+  async function handleCellDone(updatedCard: Card) {
     setSelectedCell(null);
+    // Re-fetch the enriched card so targetNames are populated
+    const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.card) setCard(data.card);
+    }
     if (updatedCard.completedAt) setShowWin(true);
   }
 
@@ -369,7 +404,9 @@ function BingoContent() {
             <BingoGrid
               card={card}
               cols={settings.cols}
+              codigo={codigo}
               onCellClick={setSelectedCell}
+              onCardUpdate={setCard}
             />
 
             <p className="mt-4 text-xs text-center text-gray-400">
