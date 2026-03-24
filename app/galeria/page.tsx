@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { getSavedCode, saveCode } from "@/lib/localCode";
 
 interface UploadedFile {
   key: string;
@@ -9,7 +10,9 @@ interface UploadedFile {
   size: number;
   lastModified: string | null;
   uploadedBy: string;
+  uploaderNames: string[];
   involvedCodes: string[];
+  involvedNames: string[];
   isOwn: boolean;
 }
 
@@ -30,6 +33,12 @@ interface FileItem {
 interface LightboxItem {
   url: string;
   isVideo: boolean;
+}
+
+interface GuestGroup {
+  codigo: string;
+  nombres: string[];
+  label: string;
 }
 
 function isVideo(key: string) {
@@ -60,8 +69,8 @@ function GaleriaContent() {
   const [uploading, setUploading] = useState(false);
 
   // Codes to tag as involved in this upload batch
-  const [involvedInput, setInvolvedInput] = useState("");
   const [involvedCodes, setInvolvedCodes] = useState<string[]>([]);
+  const [guestGroups, setGuestGroups] = useState<GuestGroup[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
@@ -75,7 +84,8 @@ function GaleriaContent() {
   }, []);
 
   useEffect(() => {
-    if (codigoFromUrl) handleVerify(codigoFromUrl);
+    const code = codigoFromUrl || getSavedCode();
+    if (code) handleVerify(code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -87,8 +97,14 @@ function GaleriaContent() {
     try {
       const res = await fetch(`/api/users/by-code/${c}`);
       if (!res.ok) throw new Error("Código no encontrado");
+      saveCode(c);
       setCodigo(c);
-      await loadFiles(c);
+      await Promise.all([
+        loadFiles(c),
+        fetch("/api/gallery/guests")
+          .then((r) => r.json())
+          .then((data) => setGuestGroups(data.groups ?? [])),
+      ]);
       setVerified(true);
     } catch (e: unknown) {
       setVerifyError(e instanceof Error ? e.message : "Código no encontrado");
@@ -132,18 +148,10 @@ function GaleriaContent() {
     });
   }
 
-  function addInvolvedCode() {
-    const c = involvedInput.toUpperCase().trim();
-    if (!c || c === codigo || involvedCodes.includes(c)) {
-      setInvolvedInput("");
-      return;
-    }
-    setInvolvedCodes((prev) => [...prev, c]);
-    setInvolvedInput("");
-  }
-
-  function removeInvolvedCode(c: string) {
-    setInvolvedCodes((prev) => prev.filter((x) => x !== c));
+  function toggleInvolved(c: string) {
+    setInvolvedCodes((prev) =>
+      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+    );
   }
 
   async function uploadAll() {
@@ -302,48 +310,18 @@ function GaleriaContent() {
           {/* Involved codes field — only shown when there are files queued */}
           {queue.some((q) => q.status === "pending") && (
             <div className="mt-4 bg-white rounded-xl p-4 shadow-sm">
-              <p className="text-sm font-medium mb-2">
+              <p className="text-sm font-medium mb-1">
                 ¿Quién aparece en estas fotos?
               </p>
               <p className="text-xs text-gray-400 mb-3">
-                Agrega los códigos de invitación de otras personas que aparecen.
-                Ellas podrán ver estas fotos en su galería.
+                Selecciona a los invitados que aparecen. Ellos podrán ver estas
+                fotos en su galería.
               </p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Código (ej. DEF456)"
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm uppercase tracking-widest focus:outline-none focus:border-[#bf953f]"
-                  value={involvedInput}
-                  onChange={(e) => setInvolvedInput(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === "Enter" && addInvolvedCode()}
-                />
-                <button
-                  onClick={addInvolvedCode}
-                  disabled={!involvedInput}
-                  className="px-3 py-2 bg-[#f5ede0] text-[#8a6d3b] rounded-lg text-sm hover:bg-[#e8d9c0] transition disabled:opacity-40"
-                >
-                  Agregar
-                </button>
-              </div>
-              {involvedCodes.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {involvedCodes.map((c) => (
-                    <span
-                      key={c}
-                      className="flex items-center gap-1.5 bg-[#f5ede0] text-[#5c4a2e] text-xs px-3 py-1 rounded-full font-mono"
-                    >
-                      {c}
-                      <button
-                        onClick={() => removeInvolvedCode(c)}
-                        className="text-[#8a6d3b] hover:text-red-400 transition leading-none"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
+              <GuestCombobox
+                groups={guestGroups.filter((g) => g.codigo !== codigo)}
+                selected={involvedCodes}
+                onToggle={toggleInvolved}
+              />
             </div>
           )}
         </div>
@@ -452,6 +430,114 @@ function GaleriaContent() {
   );
 }
 
+function GuestCombobox({
+  groups,
+  selected,
+  onToggle,
+}: {
+  groups: GuestGroup[];
+  selected: string[];
+  onToggle: (codigo: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = query.trim()
+    ? groups.filter(
+        (g) =>
+          g.label.toLowerCase().includes(query.toLowerCase()) ||
+          g.codigo.toLowerCase().includes(query.toLowerCase())
+      )
+    : groups;
+
+  const closeOnOutside = useCallback((e: MouseEvent) => {
+    if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener("mousedown", closeOnOutside);
+    return () => document.removeEventListener("mousedown", closeOnOutside);
+  }, [closeOnOutside]);
+
+  const selectedGroups = groups.filter((g) => selected.includes(g.codigo));
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        placeholder="Buscar por nombre..."
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#bf953f]"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+      />
+
+      {/* Dropdown */}
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
+          {filtered.map((g) => {
+            const isSelected = selected.includes(g.codigo);
+            return (
+              <li key={g.codigo}>
+                <button
+                  type="button"
+                  className={`w-full text-left px-4 py-2.5 text-sm flex items-center justify-between hover:bg-[#fdf5e8] transition ${
+                    isSelected ? "bg-[#f5ede0]" : ""
+                  }`}
+                  onClick={() => {
+                    onToggle(g.codigo);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                >
+                  <span>
+                    <span className="text-[#5c4a2e]">{g.label}</span>
+                    <span className="ml-2 text-xs text-gray-400 font-mono">{g.codigo}</span>
+                  </span>
+                  {isSelected && <span className="text-[#bf953f] text-base">✓</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {open && filtered.length === 0 && query.trim() && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-sm text-gray-400">
+          Sin resultados
+        </div>
+      )}
+
+      {/* Selected tags */}
+      {selectedGroups.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {selectedGroups.map((g) => (
+            <span
+              key={g.codigo}
+              className="flex items-center gap-1.5 bg-[#f5ede0] text-[#5c4a2e] text-xs px-3 py-1.5 rounded-full"
+            >
+              {g.label}
+              <button
+                type="button"
+                onClick={() => onToggle(g.codigo)}
+                className="text-[#8a6d3b] hover:text-red-400 transition leading-none ml-0.5"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FileGrid({
   files,
   loading,
@@ -468,29 +554,40 @@ function FileGrid({
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {files.map((file) => (
-        <button
-          key={file.key}
-          className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative"
-          onClick={() => onOpen(file)}
-        >
-          {isVideo(file.key) ? (
-            <>
-              <video src={file.url} className="w-full h-full object-cover" preload="metadata" muted />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
+      {files.map((file) => {
+        const tagged = file.involvedNames;
+        return (
+          <div key={file.key} className="rounded-xl overflow-hidden bg-white shadow-sm flex flex-col">
+            <button
+              className="aspect-square bg-gray-100 relative overflow-hidden"
+              onClick={() => onOpen(file)}
+            >
+              {isVideo(file.key) ? (
+                <>
+                  <video src={file.url} className="w-full h-full object-cover" preload="metadata" muted />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
+                  </div>
+                </>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={file.url}
+                  alt=""
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                />
+              )}
+            </button>
+
+            {tagged.length > 0 && (
+              <div className="px-2.5 py-2 text-xs text-[#8a6d3b] leading-snug">
+                <span className="text-gray-400">Con </span>
+                {tagged.join(", ")}
               </div>
-            </>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={file.url}
-              alt=""
-              className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
-            />
-          )}
-        </button>
-      ))}
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

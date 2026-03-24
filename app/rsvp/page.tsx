@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Loader from "../components/Loader";
 import ConfirmModal from "../components/ConfirmModal";
+import { getSavedCode, saveCode } from "@/lib/localCode";
 
 export const EstadoUsuario = {
   PENDIENTE: "pendiente",
@@ -73,6 +74,7 @@ function RSVPContent() {
         }),
       );
 
+      saveCode(codigoABuscar);
       setInvitados(invitadosMap);
       setStep("formulario");
     } catch {
@@ -87,7 +89,9 @@ function RSVPContent() {
   };
 
   useEffect(() => {
-    if (codeFromUrl) buscarCodigo(codeFromUrl);
+    const code = codeFromUrl || getSavedCode();
+    if (code) buscarCodigo(code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const updateInvitado = (index: number, field: keyof Invitado, value: string) => {

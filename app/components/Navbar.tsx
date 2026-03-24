@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getSavedCode, clearCode } from "@/lib/localCode";
 
 export default function Navbar() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const code = searchParams.get("code");
+  const codeFromUrl = searchParams.get("code");
+  const [code, setCode] = useState(codeFromUrl);
+
+  useEffect(() => {
+    setCode(codeFromUrl || getSavedCode() || null);
+  }, [codeFromUrl]);
 
   const withCode = (path: string) => {
     if (!code) return path;
@@ -47,7 +54,24 @@ export default function Navbar() {
           >
             RSVP
           </Link>
+
+          <Link
+            href={withCode("/galeria")}
+            className={`${baseClasses} ${isActive("/galeria") ? activeClasses : inactiveClasses}`}
+          >
+            Galería
+          </Link>
         </div>
+
+        {code && (
+          <button
+            onClick={() => { clearCode(); setCode(null); }}
+            className="flex items-center gap-1.5 text-xs text-[#8a6d3b] border border-[#d4af37]/50 rounded-full px-3 py-1.5 hover:bg-red-50 hover:text-red-500 hover:border-red-300 transition-all duration-200"
+          >
+            <span className="font-mono tracking-wider">{code}</span>
+            <span className="text-[10px] opacity-60">✕</span>
+          </button>
+        )}
       </div>
     </nav>
   );

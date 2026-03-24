@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import BotonesRegaloYTransferencia from "../components/BotonesRegaloYTransferencia";
 import Loader from "../components/Loader";
+import { getSavedCode, saveCode } from "@/lib/localCode";
 
 interface Invitado {
   nombre: string;
@@ -47,6 +48,7 @@ function InvitationContent() {
         return;
       }
 
+      saveCode(codigo);
       setInvitados(invitadosMap);
       setStep("invitacion");
 
@@ -62,7 +64,9 @@ function InvitationContent() {
   };
 
   useEffect(() => {
-    if (codeFromUrl) buscarCodigo(codeFromUrl);
+    const code = codeFromUrl || getSavedCode();
+    if (code) buscarCodigo(code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const nombresInvitados =

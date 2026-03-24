@@ -7,6 +7,7 @@ import WeddingCountdown from "./components/WeddingCountdown";
 import BotonesRegaloYTransferencia from "./components/BotonesRegaloYTransferencia";
 import WeddingMap from "./components/WeddingMap";
 import Loader from "./components/Loader";
+import { getSavedCode, saveCode } from "@/lib/localCode";
 
 const LINK_GOOGLE_MAPS =
   "https://www.google.com/maps/place/Hacienda+Los+Naranjos/@-33.6741379,-70.7297751,17z/data=!3m1!4b1!4m6!3m5!1s0x966320a82211b543:0xd22ecaa048bc51a8!8m2!3d-33.6741424!4d-70.7272002!16s%2Fg%2F11bwm7x0gb?entry=ttu&g_ep=EgoyMDI2MDIxNi4wIKXMDSoASAFQAw%3D%3D";
@@ -32,28 +33,23 @@ const images = [
 function HomeContent() {
   const [mostrarMapa, setMostrarMapa] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [codigoActivo, setCodigoActivo] = useState("");
 
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get("code")?.toUpperCase() || "";
 
   const buscarCodigo = async (codigo: string) => {
+    if (!codigo) return;
     setLoading(true);
 
     try {
-      if (!codigo) {
-        setLoading(false);
-        return;
-      }
       const res = await fetch(`/api/users/by-code/${codigo}`);
       if (!res.ok) throw new Error();
 
       const data = await res.json();
-
-      const invitadosMap = data.usuarios.map((u: { nombre: string }) => ({
-        nombre: u.nombre,
-      }));
-
-      if (invitadosMap.length > 0) {
+      if (data.usuarios?.length > 0) {
+        saveCode(codigo);
+        setCodigoActivo(codigo);
         setMostrarMapa(true);
       }
     } catch {
@@ -64,10 +60,9 @@ function HomeContent() {
   };
 
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get("code");
-    if (code) {
-      buscarCodigo(code.toUpperCase());
-    }
+    const code = codeFromUrl || getSavedCode();
+    if (code) buscarCodigo(code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
@@ -108,7 +103,7 @@ function HomeContent() {
           <WeddingCountdown />
 
           <Link
-            href={`/rsvp${codeFromUrl ? `?code=${codeFromUrl}` : ""}`}
+            href={`/rsvp${codigoActivo ? `?code=${codigoActivo}` : ""}`}
             className="inline-block px-10 py-4 bg-linear-to-r from-[#bf953f] via-[#d4af37] to-[#aa771c] text-white font-bold uppercase tracking-[0.25em] text-xs rounded-full shadow-xl"
           >
             Confirmar asistencia
@@ -208,7 +203,7 @@ function HomeContent() {
         </p>
 
         <Link
-          href={`/rsvp${codeFromUrl ? `?code=${codeFromUrl}` : ""}`}
+          href={`/rsvp${codigoActivo ? `?code=${codigoActivo}` : ""}`}
           className="inline-block px-12 py-4 bg-white text-[#8a6d3b] font-bold uppercase tracking-[0.25em] text-xs rounded-full shadow-xl hover:bg-[#fdf3d7] transition"
         >
           Ir al RSVP

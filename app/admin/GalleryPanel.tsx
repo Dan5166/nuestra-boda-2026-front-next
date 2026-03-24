@@ -242,63 +242,63 @@ export default function GalleryPanel() {
           {filtered.map((file) => (
             <div
               key={file.key}
-              className="relative group rounded-xl overflow-hidden bg-gray-100 aspect-square cursor-pointer"
-              onClick={() => openLightbox(file)}
+              className="rounded-xl overflow-hidden bg-white shadow-sm flex flex-col"
             >
-              {isVideo(file.key) ? (
-                <>
-                  <video
-                    src={file.url}
-                    className="w-full h-full object-cover"
-                    preload="metadata"
-                    muted
-                  />
-                  {/* Play icon badge */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="bg-black/50 rounded-full p-2 text-white text-xl">
-                      ▶
+              {/* Image / video — clickable to open lightbox */}
+              <div
+                className="relative aspect-square bg-gray-100 cursor-pointer group overflow-hidden"
+                onClick={() => openLightbox(file)}
+              >
+                {isVideo(file.key) ? (
+                  <>
+                    <video
+                      src={file.url}
+                      className="w-full h-full object-cover"
+                      preload="metadata"
+                      muted
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
                     </div>
-                  </div>
-                </>
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={file.url}
-                  alt=""
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                />
-              )}
+                  </>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={file.url}
+                    alt=""
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+                )}
+              </div>
 
-              {/* Overlay on hover */}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col justify-between p-2 pointer-events-none group-hover:pointer-events-auto">
-                <div className="space-y-1">
-                  <span className="block text-xs text-white bg-black/40 px-2 py-0.5 rounded-full font-mono w-fit">
-                    {file.codigo}
-                  </span>
+              {/* Info below image — always visible */}
+              <div className="px-2.5 py-2 flex flex-col gap-1">
+                {/* Uploader */}
+                <div className="flex items-baseline gap-1.5 min-w-0">
+                  <span className="font-mono text-xs text-gray-400 shrink-0">{file.codigo}</span>
                   {file.names.length > 0 && (
-                    <span className="block text-xs text-white/90 leading-tight">
-                      {file.names.join(", ")}
-                    </span>
-                  )}
-                  {file.involvedCodes.length > 0 && (
-                    <span className="block text-xs text-white/60 leading-tight">
-                      + {file.involvedCodes.join(", ")}
-                    </span>
+                    <span className="text-xs text-[#5c4a2e] truncate">{file.names.join(", ")}</span>
                   )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/70">{formatBytes(file.size)}</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(file.key);
-                    }}
-                    disabled={deleting === file.key}
-                    className="text-xs text-red-300 hover:text-red-100 transition"
-                  >
-                    {deleting === file.key ? "…" : "Eliminar"}
-                  </button>
-                </div>
+
+                {/* Tagged */}
+                {file.involvedCodes.length > 0 && (
+                  <div className="text-xs text-[#8a6d3b] leading-snug">
+                    <span className="text-gray-400">Con </span>
+                    {file.involvedNames.length > 0
+                      ? file.involvedNames.join(", ")
+                      : file.involvedCodes.join(", ")}
+                  </div>
+                )}
+
+                {/* Delete */}
+                <button
+                  onClick={() => handleDelete(file.key)}
+                  disabled={deleting === file.key}
+                  className="text-xs text-red-400 hover:text-red-600 transition text-left mt-0.5 disabled:opacity-40"
+                >
+                  {deleting === file.key ? "Eliminando…" : "Eliminar"}
+                </button>
               </div>
             </div>
           ))}

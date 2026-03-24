@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listUploadsByCodigo } from '@/lib/s3';
-import { findByCodigo } from '@/lib/users';
+import { findByCodigo, getAllUsers } from '@/lib/users';
 import { getGallerySettings, getMediaForCode } from '@/lib/gallery';
 
 const BUCKET = process.env.AWS_S3_BUCKET!;
@@ -22,41 +22,54 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: 'Código inválido' }, { status: 403 });
   }
 
-  const [s3Files, metaRecords, settings] = await Promise.all([
+  const [s3Files, metaRecords, settings, users] = await Promise.all([
     listUploadsByCodigo(codigo),
     getMediaForCode(codigo),
     getGallerySettings(),
+    getAllUsers(),
   ]);
 
-  // Build a map of s3Key -> metadata for quick lookup
+  // codigo -> names
+  const namesByCodigo: Record<string, string[]> = {};
+  for (const user of users) {
+    if (!namesByCodigo[user.codigo]) namesByCodigo[user.codigo] = [];
+    namesByCodigo[user.codigo].push(user.nombre);
+  }
+
   const metaByKey = new Map(metaRecords.map((m) => [m.s3Key, m]));
 
-  // Files uploaded by this code (from S3, source of truth for existence)
   const ownFiles = s3Files.map((f) => {
     const meta = metaByKey.get(f.key);
+    const involvedCodes = meta?.involvedCodes ?? [];
     return {
       key: f.key,
       url: f.url,
       size: meta?.size ?? f.size,
       lastModified: f.lastModified,
       uploadedBy: codigo,
-      involvedCodes: meta?.involvedCodes ?? [],
+      uploaderNames: namesByCodigo[codigo] ?? [],
+      involvedCodes,
+      involvedNames: involvedCodes.flatMap((c) => namesByCodigo[c] ?? []),
       isOwn: true,
     };
   });
 
-  // Files from other codes where this code is tagged (involvedCodes contains this codigo)
   const involvedFiles = metaRecords
     .filter((m) => m.uploadedBy !== codigo && m.involvedCodes.includes(codigo))
-    .map((m) => ({
-      key: m.s3Key,
-      url: s3Url(m.s3Key),
-      size: m.size,
-      lastModified: m.uploadedAt,
-      uploadedBy: m.uploadedBy,
-      involvedCodes: m.involvedCodes,
-      isOwn: false,
-    }));
+    .map((m) => {
+      const involvedCodes = m.involvedCodes;
+      return {
+        key: m.s3Key,
+        url: s3Url(m.s3Key),
+        size: m.size,
+        lastModified: m.uploadedAt,
+        uploadedBy: m.uploadedBy,
+        uploaderNames: namesByCodigo[m.uploadedBy] ?? [],
+        involvedCodes,
+        involvedNames: involvedCodes.flatMap((c) => namesByCodigo[c] ?? []),
+        isOwn: false,
+      };
+    });
 
   return NextResponse.json({
     files: [...ownFiles, ...involvedFiles],
