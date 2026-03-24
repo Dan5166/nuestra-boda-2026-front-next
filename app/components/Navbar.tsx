@@ -21,7 +21,10 @@ export default function Navbar() {
   const router = useRouter();
 
   useEffect(() => {
-    setCode(codeFromUrl || getSavedCode() || null);
+    const sync = () => setCode(codeFromUrl || getSavedCode() || null);
+    sync();
+    window.addEventListener('boda-code-changed', sync);
+    return () => window.removeEventListener('boda-code-changed', sync);
   }, [codeFromUrl]);
 
   // Close menu on route change

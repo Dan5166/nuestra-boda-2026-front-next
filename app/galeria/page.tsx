@@ -33,6 +33,9 @@ interface FileItem {
 interface LightboxItem {
   url: string;
   isVideo: boolean;
+  uploaderNames: string[];
+  involvedNames: string[];
+  isOwn: boolean;
 }
 
 interface GuestGroup {
@@ -374,7 +377,7 @@ function GaleriaContent() {
             files={ownFiles}
             loading={loadingFiles}
             emptyText="Aún no has subido archivos"
-            onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key) })}
+            onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
           />
         </section>
 
@@ -389,7 +392,7 @@ function GaleriaContent() {
               files={involvedFiles}
               loading={loadingFiles}
               emptyText="Nadie te ha etiquetado aún"
-              onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key) })}
+              onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
             />
           </section>
         )}
@@ -398,14 +401,14 @@ function GaleriaContent() {
       {/* Lightbox */}
       {lightbox && (
         <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 p-4"
           onClick={() => setLightbox(null)}
         >
-          <div onClick={(e) => e.stopPropagation()} className="max-w-5xl w-full">
+          <div onClick={(e) => e.stopPropagation()} className="max-w-5xl w-full flex flex-col items-center gap-4">
             {lightbox.isVideo ? (
               <video
                 src={lightbox.url}
-                className="w-full max-h-[85vh] rounded-xl"
+                className="w-full max-h-[78vh] rounded-xl"
                 controls
                 autoPlay
               />
@@ -414,10 +417,28 @@ function GaleriaContent() {
               <img
                 src={lightbox.url}
                 alt=""
-                className="w-full max-h-[85vh] object-contain rounded-xl"
+                className="w-full max-h-[78vh] object-contain rounded-xl"
               />
             )}
+
+            {/* Info */}
+            <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-sm">
+              {lightbox.uploaderNames.length > 0 && (
+                <span className="text-white/60">
+                  {lightbox.isOwn ? "Subida por ti" : (
+                    <><span className="text-white/40">Subida por </span><span className="text-white/90">{lightbox.uploaderNames.join(" & ")}</span></>
+                  )}
+                </span>
+              )}
+              {lightbox.involvedNames.length > 0 && (
+                <span className="text-white/60">
+                  <span className="text-white/40">Con </span>
+                  <span className="text-white/90">{lightbox.involvedNames.join(", ")}</span>
+                </span>
+              )}
+            </div>
           </div>
+
           <button
             className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl leading-none"
             onClick={() => setLightbox(null)}

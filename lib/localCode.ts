@@ -8,9 +8,11 @@ export function getSavedCode(): string {
 export function saveCode(codigo: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(KEY, codigo.toUpperCase());
+  window.dispatchEvent(new Event('boda-code-changed'));
 }
 
 export function clearCode(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(KEY);
+  window.dispatchEvent(new Event('boda-code-changed'));
 }
