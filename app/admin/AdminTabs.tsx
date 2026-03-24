@@ -3,10 +3,12 @@
 import { useState } from "react";
 import GuestsTable from "./GuestsTable";
 import GalleryPanel from "./GalleryPanel";
+import BingoPanel from "./BingoPanel";
 
 const TABS = [
   { key: "invitados", label: "Invitados" },
   { key: "galeria", label: "Galería" },
+  { key: "bingo", label: "Bingo" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["key"];
@@ -34,6 +36,7 @@ export default function AdminTabs() {
 
       {active === "invitados" && <GuestsTable />}
       {active === "galeria" && <GalleryPanel />}
+      {active === "bingo" && <BingoPanel />}
     </div>
   );
 }
