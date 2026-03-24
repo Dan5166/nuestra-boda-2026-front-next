@@ -9,6 +9,8 @@ interface UploadedFile {
   lastModified: string | null;
   codigo: string;
   names: string[];
+  involvedCodes: string[];
+  involvedNames: string[];
 }
 
 interface Settings {
@@ -23,6 +25,8 @@ interface LightboxItem {
   isVideo: boolean;
   names: string[];
   codigo: string;
+  involvedNames: string[];
+  involvedCodes: string[];
 }
 
 function isVideo(key: string) {
@@ -86,6 +90,8 @@ export default function GalleryPanel() {
       isVideo: isVideo(file.key),
       names: file.names,
       codigo: file.codigo,
+      involvedNames: file.involvedNames,
+      involvedCodes: file.involvedCodes,
     });
   }
 
@@ -274,6 +280,11 @@ export default function GalleryPanel() {
                       {file.names.join(", ")}
                     </span>
                   )}
+                  {file.involvedCodes.length > 0 && (
+                    <span className="block text-xs text-white/60 leading-tight">
+                      + {file.involvedCodes.join(", ")}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-white/70">{formatBytes(file.size)}</span>
@@ -325,16 +336,27 @@ export default function GalleryPanel() {
 
           {/* Info bar */}
           <div
-            className="mt-4 flex items-center gap-3 text-white"
+            className="mt-4 flex flex-col items-center gap-2 text-white text-sm"
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="font-mono text-sm bg-white/10 px-3 py-1 rounded-full">
-              {lightbox.codigo}
-            </span>
-            {lightbox.names.length > 0 && (
-              <span className="text-sm text-white/80">
-                {lightbox.names.join(", ")}
+            <div className="flex items-center gap-2">
+              <span className="font-mono bg-white/10 px-3 py-1 rounded-full">
+                {lightbox.codigo}
               </span>
+              {lightbox.names.length > 0 && (
+                <span className="text-white/80">{lightbox.names.join(", ")}</span>
+              )}
+            </div>
+            {lightbox.involvedCodes.length > 0 && (
+              <div className="flex items-center gap-2 text-white/60 text-xs">
+                <span>También aparecen:</span>
+                {lightbox.involvedCodes.map((c, i) => (
+                  <span key={c} className="font-mono bg-white/10 px-2 py-0.5 rounded-full">
+                    {c}
+                    {lightbox.involvedNames[i] ? ` · ${lightbox.involvedNames[i]}` : ""}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
 

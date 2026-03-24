@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { verifyJwt, COOKIE_NAME } from '@/lib/auth';
 import { listAllUploads, deleteUpload } from '@/lib/s3';
 import { getAllUsers } from '@/lib/users';
+import { getAllMedia, deleteMediaMetadata } from '@/lib/gallery';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -16,19 +17,33 @@ export async function GET(_req: NextRequest) {
   }
 
   try {
-    const [files, users] = await Promise.all([listAllUploads(), getAllUsers()]);
+    const [files, users, mediaRecords] = await Promise.all([
+      listAllUploads(),
+      getAllUsers(),
+      getAllMedia(),
+    ]);
 
-    // Build a map of codigo -> list of names
+    // codigo -> names
     const namesByCodigo: Record<string, string[]> = {};
     for (const user of users) {
       if (!namesByCodigo[user.codigo]) namesByCodigo[user.codigo] = [];
       namesByCodigo[user.codigo].push(user.nombre);
     }
 
-    const enriched = files.map((f) => ({
-      ...f,
-      names: namesByCodigo[f.codigo] ?? [],
-    }));
+    // s3Key -> metadata
+    const metaByKey = new Map(mediaRecords.map((m) => [m.s3Key, m]));
+
+    const enriched = files.map((f) => {
+      const meta = metaByKey.get(f.key);
+      return {
+        ...f,
+        names: namesByCodigo[f.codigo] ?? [],
+        involvedCodes: meta?.involvedCodes ?? [],
+        involvedNames: (meta?.involvedCodes ?? []).flatMap(
+          (c) => namesByCodigo[c] ?? []
+        ),
+      };
+    });
 
     return NextResponse.json({ files: enriched });
   } catch {
@@ -45,7 +60,7 @@ export async function DELETE(req: NextRequest) {
     const { key } = await req.json();
     if (!key) return NextResponse.json({ message: 'Falta la clave' }, { status: 400 });
 
-    await deleteUpload(key);
+    await Promise.all([deleteUpload(key), deleteMediaMetadata(key)]);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ message: 'Error interno' }, { status: 500 });
