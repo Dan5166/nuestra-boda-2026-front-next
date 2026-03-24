@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getSavedCode, clearCode } from "@/lib/localCode";
 
@@ -10,6 +10,7 @@ export default function Navbar() {
   const pathname = usePathname();
   const codeFromUrl = searchParams.get("code");
   const [code, setCode] = useState(codeFromUrl);
+  const router = useRouter();
 
   useEffect(() => {
     setCode(codeFromUrl || getSavedCode() || null);
@@ -65,7 +66,7 @@ export default function Navbar() {
 
         {code && (
           <button
-            onClick={() => { clearCode(); setCode(null); }}
+            onClick={() => { clearCode(); setCode(null); router.replace("/"); }}
             className="flex items-center gap-1.5 text-xs text-[#8a6d3b] border border-[#d4af37]/50 rounded-full px-3 py-1.5 hover:bg-red-50 hover:text-red-500 hover:border-red-300 transition-all duration-200"
           >
             <span className="font-mono tracking-wider">{code}</span>
