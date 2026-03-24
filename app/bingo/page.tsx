@@ -115,11 +115,15 @@ function UploadModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (!uploading && e.target === e.currentTarget) onClose(); }}
+    >
       <div className="relative bg-white rounded-xl shadow-2xl max-w-sm w-full p-6">
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl leading-none"
+          disabled={uploading}
+          className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl leading-none disabled:opacity-30 disabled:cursor-not-allowed"
         >
           ✕
         </button>
@@ -134,7 +138,8 @@ function UploadModal({
         {!preview ? (
           <button
             onClick={() => inputRef.current?.click()}
-            className="w-full border-2 border-dashed border-[#d4af37] rounded-lg p-8 text-center text-[#8a6d3b] hover:bg-amber-50 transition"
+            disabled={uploading}
+            className="w-full border-2 border-dashed border-[#d4af37] rounded-lg p-8 text-center text-[#8a6d3b] hover:bg-amber-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="text-3xl mb-2">📷</div>
             <div className="text-sm font-medium">Seleccionar foto</div>
