@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyJwt, COOKIE_NAME } from "@/lib/auth";
-import GuestsTable from "./GuestsTable";
+import AdminTabs from "./AdminTabs";
 
 export default async function AdminPage() {
   const cookieStore = await cookies();
@@ -25,8 +25,7 @@ export default async function AdminPage() {
           </form>
         </div>
 
-        <h2 className="font-serif text-xl mb-6">Invitados</h2>
-        <GuestsTable />
+        <AdminTabs />
       </div>
     </div>
   );
