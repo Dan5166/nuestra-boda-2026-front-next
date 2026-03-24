@@ -197,19 +197,25 @@ function RSVPContent() {
           <>
             {/* Tabs */}
             <div className="flex gap-2 border-b mb-4">
-              {invitados.map((i, idx) => (
-                <button
-                  key={i.userId}
-                  onClick={() => setActiveIndex(idx)}
-                  className={`px-3 py-2 text-sm ${
-                    idx === activeIndex
-                      ? "border-b-2 border-[#bf953f]"
-                      : "text-gray-400"
-                  }`}
-                >
-                  {i.nombre}
-                </button>
-              ))}
+              {invitados.map((i, idx) => {
+                const pendiente = i.estado === EstadoUsuario.PENDIENTE;
+                return (
+                  <button
+                    key={i.userId}
+                    onClick={() => setActiveIndex(idx)}
+                    className={`px-3 py-2 text-sm flex items-center gap-1.5 ${
+                      idx === activeIndex
+                        ? "border-b-2 border-[#bf953f]"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {i.nombre}
+                    {pendiente && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Form */}
@@ -293,13 +299,27 @@ function RSVPContent() {
             </div>
 
             {statusMsg.type !== "success" && (
-              <button
-                disabled={!todosRespondieron || loading}
-                onClick={enviarRSVP}
-                className="w-full mt-6 py-3 bg-[#8a6d3b] text-white font-bold disabled:opacity-50"
-              >
-                {loading ? "Enviando..." : "Confirmar Invitación"}
-              </button>
+              <>
+                {!todosRespondieron && (
+                  <p className="mt-6 text-center text-sm text-amber-600">
+                    {(() => {
+                      const pendientes = invitados.filter(
+                        (i) => i.estado === EstadoUsuario.PENDIENTE
+                      );
+                      return pendientes.length === 1
+                        ? `Falta que ${pendientes[0].nombre} confirme o rechace la invitación`
+                        : `Faltan ${pendientes.length} invitados por responder`;
+                    })()}
+                  </p>
+                )}
+                <button
+                  disabled={!todosRespondieron || loading}
+                  onClick={enviarRSVP}
+                  className="w-full mt-3 py-3 bg-[#8a6d3b] text-white font-bold disabled:opacity-50"
+                >
+                  {loading ? "Enviando..." : "Confirmar Invitación"}
+                </button>
+              </>
             )}
           </>
         )}
