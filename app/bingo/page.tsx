@@ -42,6 +42,8 @@ function UploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0); // 0-100, only during S3 upload
+  const [phase, setPhase] = useState<"idle" | "presign" | "upload" | "confirm">("idle");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -55,10 +57,12 @@ function UploadModal({
   async function handleUpload() {
     if (!file) return;
     setUploading(true);
+    setProgress(0);
     setError("");
 
     try {
       // 1. Get presigned URL
+      setPhase("presign");
       const presignRes = await fetch("/api/bingo/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,15 +79,22 @@ function UploadModal({
       }
       const { url, key } = await presignRes.json();
 
-      // 2. Upload directly to S3
-      const s3Res = await fetch(url, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
+      // 2. Upload directly to S3 with XHR for progress tracking
+      setPhase("upload");
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Error al subir el archivo")));
+        xhr.onerror = () => reject(new Error("Error de red al subir"));
+        xhr.open("PUT", url);
+        xhr.setRequestHeader("Content-Type", file.type);
+        xhr.send(file);
       });
-      if (!s3Res.ok) throw new Error("Error al subir el archivo");
 
       // 3. Confirm completion
+      setPhase("confirm");
       const confirmRes = await fetch("/api/bingo/complete-cell", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -99,6 +110,7 @@ function UploadModal({
       setError(e instanceof Error ? e.message : "Error inesperado");
     } finally {
       setUploading(false);
+      setPhase("idle");
     }
   }
 
@@ -154,13 +166,33 @@ function UploadModal({
 
         {error && <p className="mt-3 text-sm text-red-600 text-center">{error}</p>}
 
-        {file && (
+        {uploading && (
+          <div className="mt-4">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>
+                {phase === "presign" && "Preparando..."}
+                {phase === "upload" && "Subiendo foto..."}
+                {phase === "confirm" && "Guardando..."}
+              </span>
+              {phase === "upload" && <span>{progress}%</span>}
+            </div>
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-200"
+                style={{
+                  width: phase === "presign" ? "10%" : phase === "confirm" ? "100%" : `${progress}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {file && !uploading && (
           <button
             onClick={handleUpload}
-            disabled={uploading}
-            className="mt-4 w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-lg disabled:opacity-50"
+            className="mt-4 w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-lg"
           >
-            {uploading ? "Subiendo..." : "Confirmar"}
+            Confirmar
           </button>
         )}
       </div>
