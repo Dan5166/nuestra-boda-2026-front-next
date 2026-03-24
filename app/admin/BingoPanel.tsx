@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 interface BingoSettings {
   cols: number;
@@ -170,21 +171,13 @@ function CardViewer({
             >
               {done && cell.mediaUrl && (
                 <>
-                  {cell.mediaKey?.match(/\.(mp4|mov|webm)$/i) ? (
-                    <video
-                      src={cell.mediaUrl}
-                      className="absolute inset-0 w-full h-full object-cover rounded-[6px]"
-                      muted
-                      playsInline
-                    />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={cell.mediaUrl}
-                      alt="bingo"
-                      className="absolute inset-0 w-full h-full object-cover rounded-[6px]"
-                    />
-                  )}
+                  <Image
+                    src={cell.mediaUrl}
+                    alt="bingo"
+                    fill
+                    sizes="120px"
+                    className="object-cover rounded-[6px]"
+                  />
                   <div className="absolute inset-0 bg-black/20 rounded-[6px]" />
                 </>
               )}

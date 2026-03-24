@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { getSavedCode } from "@/lib/localCode";
 import Loader from "../components/Loader";
@@ -266,11 +267,12 @@ function BingoGrid({
           >
             {done && cell.mediaUrl && (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src={cell.mediaUrl}
                   alt="bingo"
-                  className="absolute inset-0 w-full h-full object-cover rounded-[10px]"
+                  fill
+                  sizes="(max-width: 768px) 30vw, 150px"
+                  className="object-cover rounded-[10px]"
                 />
                 <div className="absolute inset-0 bg-black/30 rounded-[10px]" />
               </>
