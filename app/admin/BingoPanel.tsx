@@ -31,19 +31,25 @@ interface EnrichedCard {
 function OverrideModal({
   cell,
   ownerCodigo,
-  allCodes,
+  allCards,
   onClose,
   onSaved,
 }: {
   cell: EnrichedCell;
   ownerCodigo: string;
-  allCodes: string[];
+  allCards: { codigo: string; ownerNames: string[] }[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [newCode, setNewCode] = useState(cell.targetCodigo);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  function label(codigo: string, names: string[]) {
+    const nameStr = names.join(", ");
+    const full = `${nameStr} (${codigo})`;
+    return full.length > 40 ? `${full.slice(0, 37)}…` : full;
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -78,9 +84,9 @@ function OverrideModal({
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}
         >
-          {allCodes.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          {allCards.map(({ codigo, ownerNames }) => (
+            <option key={codigo} value={codigo}>
+              {label(codigo, ownerNames)}
             </option>
           ))}
         </select>
@@ -109,11 +115,11 @@ function OverrideModal({
 
 function CardViewer({
   card,
-  allCodes,
+  allCards,
   onRefresh,
 }: {
   card: EnrichedCard;
-  allCodes: string[];
+  allCards: { codigo: string; ownerNames: string[] }[];
   onRefresh: () => void;
 }) {
   const [overrideCell, setOverrideCell] = useState<EnrichedCell | null>(null);
@@ -215,7 +221,7 @@ function CardViewer({
         <OverrideModal
           cell={overrideCell}
           ownerCodigo={card.codigo}
-          allCodes={allCodes}
+          allCards={allCards}
           onClose={() => setOverrideCell(null)}
           onSaved={() => { setOverrideCell(null); onRefresh(); }}
         />
@@ -288,7 +294,7 @@ export default function BingoPanel() {
     setTimeout(() => setMsg(""), 4000);
   }
 
-  const allCodes = cards.map((c) => c.codigo);
+  const allCards = cards.map((c) => ({ codigo: c.codigo, ownerNames: c.ownerNames }));
   const winnerCard = cards.find((c) => c.completedAt !== null);
   const totalCells = cards[0]?.totalCells ?? 0;
 
@@ -374,52 +380,48 @@ export default function BingoPanel() {
           <div className="space-y-2">
             {cards.map((card, idx) => {
               const pct = totalCells ? Math.round((card.completedCells / totalCells) * 100) : 0;
+              const isExpanded = expandedCode === card.codigo;
               return (
-                <div
-                  key={card.codigo}
-                  className="flex items-center gap-3 cursor-pointer hover:bg-amber-50 rounded-lg p-2 transition"
-                  onClick={() => setExpandedCode(expandedCode === card.codigo ? null : card.codigo)}
-                >
-                  <span className="text-sm font-semibold text-gray-400 w-5 text-right">{idx + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-[#5c4a2e] truncate">
-                        {card.ownerNames.join(", ")}
-                        <span className="font-mono text-xs text-gray-400 ml-1">({card.codigo})</span>
-                      </span>
-                      <span className="text-xs text-gray-500 shrink-0 ml-2">
-                        {card.completedCells}/{totalCells}
-                      </span>
+                <div key={card.codigo}>
+                  <div
+                    className="flex items-center gap-3 cursor-pointer hover:bg-amber-50 rounded-lg p-2 transition"
+                    onClick={() => setExpandedCode(isExpanded ? null : card.codigo)}
+                  >
+                    <span className="text-sm font-semibold text-gray-400 w-5 text-right">{idx + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-[#5c4a2e] truncate">
+                          {card.ownerNames.join(", ")}
+                          <span className="font-mono text-xs text-gray-400 ml-1">({card.codigo})</span>
+                        </span>
+                        <span className="text-xs text-gray-500 shrink-0 ml-2">
+                          {card.completedCells}/{totalCells}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all"
-                        style={{ width: `${pct}%` }}
+                    {card.completedAt && <span className="text-sm">🏆</span>}
+                    <span className="text-xs text-gray-400">{isExpanded ? "▲" : "▼"}</span>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="mt-2 mb-1">
+                      <CardViewer
+                        card={card}
+                        allCards={allCards}
+                        onRefresh={loadCards}
                       />
                     </div>
-                  </div>
-                  {card.completedAt && <span className="text-sm">🏆</span>}
-                  <span className="text-xs text-gray-400">{expandedCode === card.codigo ? "▲" : "▼"}</span>
+                  )}
                 </div>
               );
             })}
           </div>
-        </section>
-      )}
-
-      {/* Expanded card viewer */}
-      {expandedCode && (
-        <section>
-          {cards
-            .filter((c) => c.codigo === expandedCode)
-            .map((card) => (
-              <CardViewer
-                key={card.codigo}
-                card={card}
-                allCodes={allCodes}
-                onRefresh={loadCards}
-              />
-            ))}
         </section>
       )}
 
