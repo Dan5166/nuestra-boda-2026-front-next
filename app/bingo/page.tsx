@@ -1,58 +1,84 @@
 "use client";
 
 import { useEffect, useRef, useState, Suspense } from "react";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { getSavedCode } from "@/lib/localCode";
+import Image from "next/image";
+import { getSavedCode, saveCode } from "@/lib/localCode";
 import Loader from "../components/Loader";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Cell {
   position: number;
   targetCodigo: string;
   targetNames: string[];
   completedAt: string | null;
-  mediaKey: string | null;
   mediaUrl: string | null;
 }
 
 interface Card {
   codigo: string;
   cells: Cell[];
-  createdAt: string;
   completedAt: string | null;
 }
 
-interface BingoSettings {
-  cols: number;
-  enabled: boolean;
+interface ScannedCell {
+  targetNames: string[];
+  position: number;
+  completedAt: string | null;
+  mediaUrl: string | null;
+  token: string;
 }
 
-// ── Upload modal ─────────────────────────────────────────────────────────────
+type Phase = "idle" | "presign" | "upload" | "confirm";
+
+// ── Upload modal ──────────────────────────────────────────────────────────────
 
 function UploadModal({
   cell,
   codigo,
+  replacing,
   onClose,
   onDone,
 }: {
-  cell: Cell;
+  cell: ScannedCell;
   codigo: string;
+  replacing: boolean;
   onClose: () => void;
-  onDone: (updatedCard: Card) => void;
+  onDone: () => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0); // 0-100, only during S3 upload
-  const [phase, setPhase] = useState<"idle" | "presign" | "upload" | "confirm">("idle");
+  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
+  const [deletingOld, setDeletingOld] = useState(false);
+  const [readyToUpload, setReadyToUpload] = useState(!replacing);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleFile(f: File) {
     setFile(f);
     setError("");
-    const url = URL.createObjectURL(f);
-    setPreview(url);
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function handleDeleteAndProceed() {
+    setDeletingOld(true);
+    setError("");
+    try {
+      const res = await fetch("/api/bingo/delete-cell", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo, position: cell.position }),
+      });
+      if (!res.ok) throw new Error("No se pudo borrar la foto anterior");
+      setReadyToUpload(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al borrar");
+    } finally {
+      setDeletingOld(false);
+    }
   }
 
   async function handleUpload() {
@@ -62,7 +88,6 @@ function UploadModal({
     setError("");
 
     try {
-      // 1. Get presigned URL
       setPhase("presign");
       const presignRes = await fetch("/api/bingo/presign", {
         method: "POST",
@@ -80,21 +105,22 @@ function UploadModal({
       }
       const { url, key } = await presignRes.json();
 
-      // 2. Upload directly to S3 with XHR for progress tracking
       setPhase("upload");
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
         };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Error al subir el archivo")));
+        xhr.onload = () =>
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve()
+            : reject(new Error("Error al subir el archivo"));
         xhr.onerror = () => reject(new Error("Error de red al subir"));
         xhr.open("PUT", url);
         xhr.setRequestHeader("Content-Type", file.type);
         xhr.send(file);
       });
 
-      // 3. Confirm completion
       setPhase("confirm");
       const confirmRes = await fetch("/api/bingo/complete-cell", {
         method: "POST",
@@ -105,8 +131,7 @@ function UploadModal({
         const d = await confirmRes.json();
         throw new Error(d.message || "Error al confirmar");
       }
-      const { card: updated } = await confirmRes.json();
-      onDone(updated);
+      onDone();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error inesperado");
     } finally {
@@ -117,152 +142,233 @@ function UploadModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => { if (!uploading && e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={(e) => {
+        if (!uploading && !deletingOld && e.target === e.currentTarget) onClose();
+      }}
     >
-      <div className="relative bg-white rounded-xl shadow-2xl max-w-sm w-full p-6">
-        <button
-          onClick={onClose}
-          disabled={uploading}
-          className="absolute top-3 right-3 text-gray-400 hover:text-gray-700 text-xl leading-none disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          ✕
-        </button>
-
-        <h3 className="font-semibold text-lg text-[#5c4a2e] mb-1">
-          Foto con {cell.targetNames.join(" y ")}
-        </h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Sube una foto junto a esta persona.
-        </p>
-
-        {!preview ? (
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide">Foto con</p>
+            <h3 className="text-lg font-bold text-[#5c4a2e]">
+              {cell.targetNames.join(" y ")}
+            </h3>
+          </div>
           <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className="w-full border-2 border-dashed border-[#d4af37] rounded-lg p-8 text-center text-[#8a6d3b] hover:bg-amber-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={onClose}
+            disabled={uploading || deletingOld}
+            className="text-gray-400 hover:text-gray-700 text-xl leading-none disabled:opacity-30"
           >
-            <div className="text-3xl mb-2">📷</div>
-            <div className="text-sm font-medium">Seleccionar foto</div>
+            ✕
           </button>
-        ) : (
-          <div className="relative mb-4">
-            {file?.type.startsWith("video/") ? (
-              <video src={preview} controls className="w-full rounded-lg max-h-48 object-cover" />
-            ) : (
+        </div>
+
+        {/* Replace confirmation step */}
+        {replacing && !readyToUpload && (
+          <div className="space-y-4">
+            {cell.mediaUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={preview} alt="preview" className="w-full rounded-lg max-h-48 object-cover" />
+              <img
+                src={cell.mediaUrl}
+                alt="foto actual"
+                className="w-full rounded-xl max-h-40 object-cover opacity-70"
+              />
             )}
+            <p className="text-sm text-gray-600 text-center">
+              Ya tienes una foto con esta persona. ¿Querés reemplazarla?
+            </p>
+            {error && <p className="text-sm text-red-600 text-center">{error}</p>}
             <button
-              onClick={() => { setFile(null); setPreview(null); }}
-              className="absolute top-2 right-2 bg-white/80 rounded-full w-6 h-6 text-xs text-gray-600 hover:bg-white"
+              onClick={handleDeleteAndProceed}
+              disabled={deletingOld}
+              className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl disabled:opacity-50"
             >
-              ✕
+              {deletingOld ? "Borrando..." : "Sí, reemplazar"}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600"
+            >
+              Cancelar
             </button>
           </div>
         )}
 
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
+        {/* Upload step */}
+        {readyToUpload && (
+          <div className="space-y-4">
+            {!preview ? (
+              <button
+                onClick={() => inputRef.current?.click()}
+                disabled={uploading}
+                className="w-full border-2 border-dashed border-[#d4af37] rounded-xl p-10 text-center text-[#8a6d3b] hover:bg-amber-50 transition disabled:opacity-50"
+              >
+                <div className="text-4xl mb-2">📷</div>
+                <div className="text-sm font-medium">Seleccionar foto</div>
+              </button>
+            ) : (
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={preview}
+                  alt="preview"
+                  className="w-full rounded-xl max-h-52 object-cover"
+                />
+                <button
+                  onClick={() => { setFile(null); setPreview(null); }}
+                  className="absolute top-2 right-2 bg-white/80 rounded-full w-7 h-7 text-sm text-gray-600 hover:bg-white shadow"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
-        {error && <p className="mt-3 text-sm text-red-600 text-center">{error}</p>}
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            />
 
-        {uploading && (
-          <div className="mt-4">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>
-                {phase === "presign" && "Preparando..."}
-                {phase === "upload" && "Subiendo foto..."}
-                {phase === "confirm" && "Guardando..."}
-              </span>
-              {phase === "upload" && <span>{progress}%</span>}
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-200"
-                style={{
-                  width: phase === "presign" ? "10%" : phase === "confirm" ? "100%" : `${progress}%`,
-                }}
-              />
-            </div>
+            {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+
+            {uploading && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>
+                    {phase === "presign" && "Preparando..."}
+                    {phase === "upload" && "Subiendo foto..."}
+                    {phase === "confirm" && "Guardando..."}
+                  </span>
+                  {phase === "upload" && <span>{progress}%</span>}
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-200"
+                    style={{
+                      width:
+                        phase === "presign" ? "10%" : phase === "confirm" ? "100%" : `${progress}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {file && !uploading && (
+              <button
+                onClick={handleUpload}
+                className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl"
+              >
+                Confirmar y subir
+              </button>
+            )}
           </div>
-        )}
-
-        {file && !uploading && (
-          <button
-            onClick={handleUpload}
-            className="mt-4 w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-lg"
-          >
-            Confirmar
-          </button>
         )}
       </div>
     </div>
   );
 }
 
-// ── Bingo grid ────────────────────────────────────────────────────────────────
+// ── QR Scanner component ──────────────────────────────────────────────────────
 
-function BingoGrid({
-  card,
-  cols,
-  codigo,
-  onCellClick,
-  onCardUpdate,
+function QRScanner({
+  onDetected,
+  active,
 }: {
-  card: Card;
-  cols: number;
-  codigo: string;
-  onCellClick: (cell: Cell) => void;
-  onCardUpdate: (card: Card) => void;
+  onDetected: (text: string) => void;
+  active: boolean;
 }) {
-  const [deleting, setDeleting] = useState<number | null>(null);
-  const sorted = [...card.cells].sort((a, b) => a.position - b.position);
+  const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
+  const startedRef = useRef(false);
+  const divId = "qr-scanner-viewfinder";
 
-  async function handleDelete(cell: Cell, e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!confirm(`¿Borrar la foto de "${cell.targetNames.join(" y ")}"?`)) return;
-    setDeleting(cell.position);
-    try {
-      const res = await fetch("/api/bingo/delete-cell", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigo, position: cell.position }),
-      });
-      if (!res.ok) throw new Error();
-      // Reload card from server to get updated state
-      const cardRes = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
-      if (cardRes.ok) {
-        const data = await cardRes.json();
-        if (data.card) onCardUpdate(data.card);
+  useEffect(() => {
+    if (!active) {
+      if (startedRef.current && scannerRef.current) {
+        startedRef.current = false;
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
       }
-    } catch {
-      alert("No se pudo borrar la foto");
-    } finally {
-      setDeleting(null);
+      return;
     }
-  }
+
+    let unmounted = false;
+
+    async function startScanner() {
+      const { Html5Qrcode } = await import("html5-qrcode");
+      if (unmounted) return;
+
+      const scanner = new Html5Qrcode(divId, { verbose: false });
+      scannerRef.current = scanner;
+
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 8, qrbox: { width: 220, height: 220 } },
+          (text) => { if (!unmounted) onDetected(text); },
+          () => {}
+        );
+        if (!unmounted) startedRef.current = true;
+      } catch {
+        // Camera permission denied or unavailable
+        scannerRef.current = null;
+      }
+    }
+
+    startScanner();
+
+    return () => {
+      unmounted = true;
+      if (startedRef.current && scannerRef.current) {
+        startedRef.current = false;
+        scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  if (!active) return null;
 
   return (
-    <div
-      className="grid gap-2"
-      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-    >
+    <div className="relative">
+      <div
+        id={divId}
+        className="w-full overflow-hidden rounded-xl"
+        style={{ minHeight: 260 }}
+      />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="relative w-48 h-48">
+          {["top-0 left-0 border-t-4 border-l-4", "top-0 right-0 border-t-4 border-r-4",
+            "bottom-0 left-0 border-b-4 border-l-4", "bottom-0 right-0 border-b-4 border-r-4",
+          ].map((cls, i) => (
+            <span key={i} className={`absolute w-6 h-6 border-[#d4af37] rounded-sm ${cls}`} />
+          ))}
+        </div>
+      </div>
+      <p className="text-center text-xs text-gray-400 mt-2">
+        Apuntá la cámara al código QR del papel
+      </p>
+    </div>
+  );
+}
+
+// ── Progress grid ─────────────────────────────────────────────────────────────
+
+function ProgressGrid({ card, cols }: { card: Card; cols: number }) {
+  const sorted = [...card.cells].sort((a, b) => a.position - b.position);
+  return (
+    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
       {sorted.map((cell) => {
         const done = cell.completedAt !== null;
         return (
           <div
             key={cell.position}
-            onClick={() => !done && onCellClick(cell)}
-            className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-center p-2 border-2 transition-all duration-200 ${
-              done
-                ? "border-[#d4af37] bg-[#d4af37]/10"
-                : "border-[#e8d9c0] bg-white hover:border-[#d4af37] hover:shadow-md active:scale-95 cursor-pointer"
+            className={`relative aspect-square rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
+              done ? "border-[#d4af37] bg-[#d4af37]/10" : "border-gray-200 bg-gray-50"
             }`}
           >
             {done && cell.mediaUrl && (
@@ -271,37 +377,19 @@ function BingoGrid({
                   src={cell.mediaUrl}
                   alt="bingo"
                   fill
-                  sizes="(max-width: 768px) 30vw, 150px"
-                  className="object-cover rounded-[10px]"
+                  sizes="80px"
+                  className="object-cover rounded-[5px]"
                 />
-                <div className="absolute inset-0 bg-black/30 rounded-[10px]" />
+                <div className="absolute inset-0 bg-black/25 rounded-[5px]" />
               </>
             )}
-            <div className="relative z-10">
+            <div className="relative z-10 text-[10px] leading-tight font-medium">
               {done ? (
-                <div className="text-2xl">✓</div>
+                <span className="text-white text-sm">✓</span>
               ) : (
-                <div className="text-[11px] leading-tight text-[#5c4a2e] font-medium">
-                  {cell.targetNames.join("\n")}
-                </div>
-              )}
-              {done && (
-                <div className="text-[10px] text-white/90 mt-1 font-medium">
-                  {cell.targetNames[0]}
-                </div>
+                <span className="text-[#5c4a2e]">{cell.targetNames[0] ?? "?"}</span>
               )}
             </div>
-
-            {done && (
-              <button
-                onClick={(e) => handleDelete(cell, e)}
-                disabled={deleting === cell.position}
-                className="absolute top-1 right-1 z-20 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] flex items-center justify-center hover:bg-red-500 transition disabled:opacity-50"
-                title="Borrar foto"
-              >
-                {deleting === cell.position ? "…" : "✕"}
-              </button>
-            )}
           </div>
         );
       })}
@@ -313,44 +401,41 @@ function BingoGrid({
 
 function BingoContent() {
   const searchParams = useSearchParams();
-  const codeFromUrl = searchParams.get("code")?.toUpperCase() || "";
+  const codeFromUrl = searchParams.get("code")?.toUpperCase() ?? "";
 
   const [codigo, setCodigo] = useState(codeFromUrl);
   const [codigoInput, setCodigoInput] = useState(codeFromUrl);
-  const [step, setStep] = useState<"codigo" | "bingo">(codeFromUrl ? "bingo" : "codigo");
+  const [step, setStep] = useState<"codigo" | "scanner">(codeFromUrl ? "scanner" : "codigo");
   const [card, setCard] = useState<Card | null>(null);
-  const [settings, setSettings] = useState<BingoSettings | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [selectedCell, setSelectedCell] = useState<Cell | null>(null);
-  const [showWin, setShowWin] = useState(false);
+  const [cols, setCols] = useState(3);
+  const [loadingCard, setLoadingCard] = useState(false);
+  const [cardError, setCardError] = useState("");
+
+  const [scannerActive, setScannerActive] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  const [scannedCell, setScannedCell] = useState<ScannedCell | null>(null);
+  const [isReplacing, setIsReplacing] = useState(false);
+
+  const [toast, setToast] = useState("");
+  const lastToken = useRef("");
 
   async function loadCard(code: string) {
-    setLoading(true);
-    setError("");
+    setLoadingCard(true);
+    setCardError("");
     try {
       const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(code)}`);
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Error al cargar el cartón");
-      }
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
       const data = await res.json();
-      setSettings(data.settings);
-
-      if (!data.settings.enabled) {
-        setError("El bingo aún no está disponible.");
-        return;
-      }
-      if (!data.card) {
-        setError("Todavía no se generaron los cartones. Espera a que el admin los cree.");
-        return;
-      }
+      if (!data.settings.enabled) throw new Error("El bingo está desactivado.");
+      if (!data.card) throw new Error("Todavía no se generaron los cartones.");
+      setCols(data.settings.cols);
       setCard(data.card);
-      setStep("bingo");
+      setStep("scanner");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error inesperado");
+      setCardError(e instanceof Error ? e.message : "Error al cargar");
     } finally {
-      setLoading(false);
+      setLoadingCard(false);
     }
   }
 
@@ -361,24 +446,82 @@ function BingoContent() {
       setCodigoInput(code);
       loadCard(code);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleCellDone(updatedCard: Card) {
-    setSelectedCell(null);
-    // Re-fetch the enriched card so targetNames are populated
+  useEffect(() => {
+    setScannerActive(step === "scanner" && card !== null && scannedCell === null);
+  }, [step, card, scannedCell]);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
+  }
+
+  async function handleQRDetected(raw: string) {
+    if (scanning || scannedCell) return;
+
+    let token = raw;
+    try {
+      const url = new URL(raw);
+      const t = url.searchParams.get("t");
+      if (t) token = t;
+    } catch {
+      // raw is already a plain token
+    }
+
+    if (!token || token === lastToken.current) return;
+    lastToken.current = token;
+    setScanning(true);
+
+    try {
+      const res = await fetch(
+        `/api/bingo/escanear?t=${encodeURIComponent(token)}&codigo=${encodeURIComponent(codigo)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.message || "QR no reconocido");
+        setTimeout(() => { lastToken.current = ""; }, 2000);
+        return;
+      }
+
+      setScannedCell({
+        targetNames: data.targetNames,
+        position: data.position,
+        completedAt: data.completedAt,
+        mediaUrl: data.mediaUrl,
+        token,
+      });
+      setIsReplacing(data.completedAt !== null);
+    } catch {
+      showToast("Error al leer el QR");
+      setTimeout(() => { lastToken.current = ""; }, 2000);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function handleUploadDone() {
+    setScannedCell(null);
+    lastToken.current = "";
     const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
     if (res.ok) {
       const data = await res.json();
       if (data.card) setCard(data.card);
     }
-    if (updatedCard.completedAt) setShowWin(true);
+    showToast("¡Foto guardada! ✓");
+  }
+
+  function handleModalClose() {
+    setScannedCell(null);
+    lastToken.current = "";
   }
 
   const completedCells = card ? card.cells.filter((c) => c.completedAt !== null).length : 0;
   const totalCells = card ? card.cells.length : 0;
 
-  if (loading) return <Loader />;
+  if (loadingCard) return <Loader />;
 
   return (
     <div
@@ -390,109 +533,106 @@ function BingoContent() {
         style={{ backgroundImage: "url(/assets/fondo-movil.webp)" }}
       />
 
-      <div className="relative z-10 w-full max-w-lg">
+      <div className="relative z-10 w-full max-w-lg space-y-4">
+        {/* Code entry */}
         {step === "codigo" && (
           <div className="bg-white/95 p-6 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-            <h2 className="text-xl font-bold mb-2 text-[#5c4a2e]">Bingo de la boda</h2>
-            <p className="text-sm text-gray-500 mb-4">Ingresa tu código de invitación</p>
+            <h2 className="text-xl font-bold mb-1 text-[#5c4a2e]">Bingo de la boda</h2>
+            <p className="text-sm text-gray-500 mb-4">Ingresá tu código de invitación</p>
             <input
               placeholder="Código"
-              className="w-full border p-2 mb-4 uppercase"
+              className="w-full border p-2.5 mb-4 uppercase font-mono tracking-widest text-sm rounded-lg"
               value={codigoInput}
               onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === "Enter" && codigoInput && loadCard(codigoInput)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && codigoInput) {
+                  saveCode(codigoInput);
+                  setCodigo(codigoInput);
+                  loadCard(codigoInput);
+                }
+              }}
+              autoCapitalize="characters"
+              autoCorrect="off"
             />
             <button
-              onClick={() => { setCodigo(codigoInput); loadCard(codigoInput); }}
-              disabled={!codigoInput || loading}
-              className="w-full py-3 bg-[#8a6d3b] text-white font-bold disabled:opacity-50"
+              onClick={() => { saveCode(codigoInput); setCodigo(codigoInput); loadCard(codigoInput); }}
+              disabled={!codigoInput || loadingCard}
+              className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl disabled:opacity-50"
             >
-              {loading ? "Cargando..." : "Ver mi cartón"}
+              Continuar
             </button>
-            {error && (
-              <div className="mt-4 border border-red-300 bg-red-50 text-red-700 rounded-lg p-3 text-sm text-center">
-                {error}
-              </div>
+            {cardError && (
+              <p className="mt-3 text-sm text-red-600 text-center">{cardError}</p>
             )}
           </div>
         )}
 
-        {step === "bingo" && card && settings && (
-          <div className="bg-white/95 p-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-lg font-bold text-[#5c4a2e]">Tu cartón</h2>
-                <p className="text-xs text-gray-400 font-mono">{codigo}</p>
-              </div>
-              <div className="text-right">
-                <div className="text-xl font-bold text-[#d4af37]">
-                  {completedCells}/{totalCells}
+        {step === "scanner" && card && (
+          <>
+            {/* Header */}
+            <div className="bg-white/95 px-5 py-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-lg font-bold text-[#5c4a2e]">Bingo de la boda</h2>
+                  <p className="text-xs text-gray-400 font-mono">{codigo}</p>
                 </div>
-                <div className="text-xs text-gray-400">casillas</div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-[#d4af37]">
+                    {completedCells}/{totalCells}
+                  </div>
+                  <div className="text-xs text-gray-400">fotos</div>
+                </div>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-500"
+                  style={{ width: `${totalCells ? (completedCells / totalCells) * 100 : 0}%` }}
+                />
               </div>
             </div>
 
-            {/* Progress bar */}
-            <div className="h-1.5 bg-gray-100 rounded-full mb-4 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-500"
-                style={{ width: `${totalCells ? (completedCells / totalCells) * 100 : 0}%` }}
-              />
+            {/* Scanner */}
+            <div className="bg-white/95 p-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
+              {scanning && (
+                <div className="flex items-center justify-center gap-2 py-2 mb-2 text-sm text-[#8a6d3b]">
+                  <div className="w-4 h-4 border-2 border-[#d4af37] border-t-transparent rounded-full animate-spin" />
+                  Verificando...
+                </div>
+              )}
+              <QRScanner onDetected={handleQRDetected} active={scannerActive} />
             </div>
 
-            <BingoGrid
-              card={card}
-              cols={settings.cols}
-              codigo={codigo}
-              onCellClick={setSelectedCell}
-              onCardUpdate={setCard}
-            />
-
-            <p className="mt-4 text-xs text-center text-gray-400">
-              Toca una casilla para subir tu foto con esa persona
-            </p>
-
-            {error && (
-              <div className="mt-3 border border-red-300 bg-red-50 text-red-700 rounded-lg p-3 text-sm text-center">
-                {error}
-              </div>
-            )}
-          </div>
-        )}
-
-        {step === "bingo" && !card && !loading && (
-          <div className="bg-white/95 p-6 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1] text-center">
-            <div className="text-4xl mb-3">🎲</div>
-            <p className="text-[#5c4a2e] font-semibold">{error || "Cargando..."}</p>
-          </div>
+            {/* Progress grid */}
+            <div className="bg-white/95 p-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
+              <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Tu cartón</p>
+              <ProgressGrid card={card} cols={cols} />
+              <button
+                onClick={() => { setCodigo(""); setCard(null); setStep("codigo"); setScannerActive(false); }}
+                className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600 underline"
+              >
+                Cambiar código
+              </button>
+            </div>
+          </>
         )}
       </div>
 
-      {selectedCell && (
-        <UploadModal
-          cell={selectedCell}
-          codigo={codigo}
-          onClose={() => setSelectedCell(null)}
-          onDone={handleCellDone}
-        />
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-[#3d2c10] text-white text-sm px-5 py-3 rounded-full shadow-xl">
+          {toast}
+        </div>
       )}
 
-      {showWin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-xs w-full p-8 text-center">
-            <div className="text-5xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold text-[#5c4a2e] mb-2">¡BINGO!</h2>
-            <p className="text-gray-600 mb-6">
-              ¡Completaste todas las casillas! ¡Eres el primero en terminar!
-            </p>
-            <button
-              onClick={() => setShowWin(false)}
-              className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-lg"
-            >
-              Ver mi cartón
-            </button>
-          </div>
-        </div>
+      {/* Upload modal */}
+      {scannedCell && (
+        <UploadModal
+          cell={scannedCell}
+          codigo={codigo}
+          replacing={isReplacing}
+          onClose={handleModalClose}
+          onDone={handleUploadDone}
+        />
       )}
     </div>
   );
