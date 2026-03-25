@@ -47,8 +47,7 @@ function OverrideModal({
   const [error, setError] = useState("");
 
   function label(codigo: string, names: string[]) {
-    const nameStr = names.join(", ");
-    const full = `${nameStr} (${codigo})`;
+    const full = `${names.join(", ")} (${codigo})`;
     return full.length > 40 ? `${full.slice(0, 37)}…` : full;
   }
 
@@ -56,14 +55,11 @@ function OverrideModal({
     setSaving(true);
     setError("");
     try {
-      const res = await fetch(
-        `/api/admin/bingo/cards/${ownerCodigo}/${cell.position}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ newTargetCodigo: newCode }),
-        }
-      );
+      const res = await fetch(`/api/admin/bingo/cards/${ownerCodigo}/${cell.position}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newTargetCodigo: newCode }),
+      });
       if (!res.ok) throw new Error("Error al guardar");
       onSaved();
     } catch {
@@ -86,17 +82,12 @@ function OverrideModal({
           onChange={(e) => setNewCode(e.target.value)}
         >
           {allCards.map(({ codigo, ownerNames }) => (
-            <option key={codigo} value={codigo}>
-              {label(codigo, ownerNames)}
-            </option>
+            <option key={codigo} value={codigo}>{label(codigo, ownerNames)}</option>
           ))}
         </select>
         {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
         <div className="flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
-          >
+          <button onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
             Cancelar
           </button>
           <button
@@ -112,7 +103,7 @@ function OverrideModal({
   );
 }
 
-// ── Card viewer ───────────────────────────────────────────────────────────────
+// ── Bingo card viewer ─────────────────────────────────────────────────────────
 
 function CardViewer({
   card,
@@ -129,12 +120,10 @@ function CardViewer({
   const cols = Math.round(Math.sqrt(card.totalCells));
 
   async function handleDelete(cell: EnrichedCell) {
-    if (!confirm(`¿Borrar la foto de la casilla "${cell.targetNames[0]}" de ${card.codigo}?`)) return;
+    if (!confirm(`¿Borrar la foto de "${cell.targetNames[0]}" de ${card.codigo}?`)) return;
     setDeleting(cell.position);
     try {
-      const res = await fetch(`/api/admin/bingo/cards/${card.codigo}/${cell.position}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/admin/bingo/cards/${card.codigo}/${cell.position}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onRefresh();
     } catch {
@@ -152,21 +141,14 @@ function CardViewer({
           <span className="ml-2 text-sm text-gray-500">{card.ownerNames.join(", ")}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">
-            {card.completedCells}/{card.totalCells}
-          </span>
+          <span className="text-sm text-gray-500">{card.completedCells}/{card.totalCells}</span>
           {card.completedAt && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-              ¡BINGO!
-            </span>
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">¡BINGO!</span>
           )}
         </div>
       </div>
 
-      <div
-        className="grid gap-1.5"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {sorted.map((cell) => {
           const done = cell.completedAt !== null;
           return (
@@ -178,13 +160,7 @@ function CardViewer({
             >
               {done && cell.mediaUrl && (
                 <>
-                  <Image
-                    src={cell.mediaUrl}
-                    alt="bingo"
-                    fill
-                    sizes="120px"
-                    className="object-cover rounded-[6px]"
-                  />
+                  <Image src={cell.mediaUrl} alt="bingo" fill sizes="120px" className="object-cover rounded-[6px]" />
                   <div className="absolute inset-0 bg-black/20 rounded-[6px]" />
                 </>
               )}
@@ -193,22 +169,16 @@ function CardViewer({
                   {cell.targetNames[0] ?? cell.targetCodigo}
                 </div>
                 {!done && (
-                  <button
-                    onClick={() => setOverrideCell(cell)}
-                    className="mt-0.5 text-[9px] text-[#d4af37] underline"
-                    title="Cambiar asignación"
-                  >
+                  <button onClick={() => setOverrideCell(cell)} className="mt-0.5 text-[9px] text-[#d4af37] underline">
                     cambiar
                   </button>
                 )}
               </div>
-
               {done && (
                 <button
                   onClick={() => handleDelete(cell)}
                   disabled={deleting === cell.position}
                   className="absolute top-0.5 right-0.5 z-20 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] flex items-center justify-center hover:bg-red-500 transition disabled:opacity-50"
-                  title="Borrar foto"
                 >
                   {deleting === cell.position ? "…" : "✕"}
                 </button>
@@ -231,6 +201,61 @@ function CardViewer({
   );
 }
 
+// ── Collage view ──────────────────────────────────────────────────────────────
+
+interface PhotoItem {
+  url: string;
+  targetNames: string[];
+  ownerNames: string[];
+  completedAt: string;
+}
+
+function CollageView({ cards }: { cards: EnrichedCard[] }) {
+  const photos: PhotoItem[] = cards
+    .flatMap((card) =>
+      card.cells
+        .filter((c) => c.completedAt && c.mediaUrl)
+        .map((c) => ({
+          url: c.mediaUrl!,
+          targetNames: c.targetNames,
+          ownerNames: card.ownerNames,
+          completedAt: c.completedAt!,
+        }))
+    )
+    .sort((a, b) => a.completedAt.localeCompare(b.completedAt));
+
+  if (photos.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <div className="text-4xl mb-2">📷</div>
+        <p className="text-sm">Aún no hay fotos</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="columns-2 sm:columns-3 gap-2 space-y-2">
+      {photos.map((photo, i) => (
+        <div key={i} className="break-inside-avoid relative group rounded-xl overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photo.url}
+            alt={photo.targetNames.join(" y ")}
+            className="w-full object-cover block"
+            loading="lazy"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <p className="text-white text-[11px] font-semibold leading-tight">
+              {photo.targetNames.join(" & ")}
+            </p>
+            <p className="text-white/70 text-[10px]">{photo.ownerNames.join(", ")}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function BingoPanel() {
@@ -242,6 +267,7 @@ export default function BingoPanel() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState<"ok" | "err">("ok");
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
+  const [leaderboardMode, setLeaderboardMode] = useState<"bingo" | "collage">("bingo");
 
   async function loadSettings() {
     const res = await fetch("/api/admin/bingo/settings");
@@ -258,10 +284,7 @@ export default function BingoPanel() {
     setLoadingCards(false);
   }
 
-  useEffect(() => {
-    loadSettings();
-    loadCards();
-  }, []);
+  useEffect(() => { loadSettings(); loadCards(); }, []);
 
   async function saveSettings() {
     setSavingSettings(true);
@@ -271,8 +294,8 @@ export default function BingoPanel() {
       body: JSON.stringify(settings),
     });
     setSavingSettings(false);
-    if (res.ok) { flash("Configuración guardada", "ok"); }
-    else { flash("Error al guardar", "err"); }
+    if (res.ok) flash("Configuración guardada", "ok");
+    else flash("Error al guardar", "err");
   }
 
   async function generate() {
@@ -290,14 +313,14 @@ export default function BingoPanel() {
   }
 
   function flash(text: string, type: "ok" | "err") {
-    setMsg(text);
-    setMsgType(type);
+    setMsg(text); setMsgType(type);
     setTimeout(() => setMsg(""), 4000);
   }
 
   const allCards = cards.map((c) => ({ codigo: c.codigo, ownerNames: c.ownerNames }));
   const winnerCard = cards.find((c) => c.completedAt !== null);
   const totalCells = cards[0]?.totalCells ?? 0;
+  const totalPhotos = cards.reduce((sum, c) => sum + c.completedCells, 0);
 
   return (
     <div className="space-y-8">
@@ -343,7 +366,7 @@ export default function BingoPanel() {
             <h3 className="font-semibold text-[#5c4a2e]">Cartones</h3>
             <p className="text-sm text-gray-500">
               {cards.length > 0
-                ? `${cards.length} cartones generados · ${totalCells} casillas c/u`
+                ? `${cards.length} cartones · ${totalCells} casillas c/u · ${totalPhotos} fotos subidas`
                 : "Aún no se generaron cartones"}
             </p>
           </div>
@@ -355,7 +378,6 @@ export default function BingoPanel() {
             {generating ? "Generando..." : "Generar cartones"}
           </button>
         </div>
-
         {msg && (
           <div className={`mt-3 text-sm px-4 py-2 rounded-lg ${msgType === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
             {msg}
@@ -363,66 +385,88 @@ export default function BingoPanel() {
         )}
       </section>
 
-      {/* Leaderboard */}
+      {/* Leaderboard / Collage */}
       {cards.length > 0 && (
         <section className="bg-[#fffdf7] border border-[#e8d9c0] rounded-xl p-5">
-          <h3 className="font-semibold text-[#5c4a2e] mb-4">Ranking</h3>
-          {winnerCard && (
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
-              <span className="text-xl">🏆</span>
-              <div>
-                <div className="font-semibold text-yellow-800 text-sm">
-                  ¡{winnerCard.ownerNames.join(" y ")} ganaron el bingo!
-                </div>
-                <div className="text-xs text-yellow-600 font-mono">{winnerCard.codigo}</div>
-              </div>
+          {/* Section header with toggle */}
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h3 className="font-semibold text-[#5c4a2e]">
+              {leaderboardMode === "bingo" ? "Ranking" : "Collage de fotos"}
+            </h3>
+            <div className="flex rounded-lg border border-[#e8d9c0] overflow-hidden text-sm">
+              <button
+                onClick={() => setLeaderboardMode("bingo")}
+                className={`px-4 py-1.5 font-medium transition ${leaderboardMode === "bingo" ? "bg-[#8a6d3b] text-white" : "bg-white text-gray-500 hover:bg-amber-50"}`}
+              >
+                Bingo
+              </button>
+              <button
+                onClick={() => setLeaderboardMode("collage")}
+                className={`px-4 py-1.5 font-medium transition ${leaderboardMode === "collage" ? "bg-[#8a6d3b] text-white" : "bg-white text-gray-500 hover:bg-amber-50"}`}
+              >
+                Collage
+              </button>
             </div>
-          )}
-          <div className="space-y-2">
-            {cards.map((card, idx) => {
-              const pct = totalCells ? Math.round((card.completedCells / totalCells) * 100) : 0;
-              const isExpanded = expandedCode === card.codigo;
-              return (
-                <div key={card.codigo}>
-                  <div
-                    className="flex items-center gap-3 cursor-pointer hover:bg-amber-50 rounded-lg p-2 transition"
-                    onClick={() => setExpandedCode(isExpanded ? null : card.codigo)}
-                  >
-                    <span className="text-sm font-semibold text-gray-400 w-5 text-right">{idx + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-[#5c4a2e] truncate">
-                          {card.ownerNames.join(", ")}
-                          <span className="font-mono text-xs text-gray-400 ml-1">({card.codigo})</span>
-                        </span>
-                        <span className="text-xs text-gray-500 shrink-0 ml-2">
-                          {card.completedCells}/{totalCells}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                    {card.completedAt && <span className="text-sm">🏆</span>}
-                    <span className="text-xs text-gray-400">{isExpanded ? "▲" : "▼"}</span>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="mt-2 mb-1">
-                      <CardViewer
-                        card={card}
-                        allCards={allCards}
-                        onRefresh={loadCards}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
+
+          {/* Bingo ranking */}
+          {leaderboardMode === "bingo" && (
+            <>
+              {winnerCard && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
+                  <span className="text-xl">🏆</span>
+                  <div>
+                    <div className="font-semibold text-yellow-800 text-sm">
+                      ¡{winnerCard.ownerNames.join(" y ")} ganaron el bingo!
+                    </div>
+                    <div className="text-xs text-yellow-600 font-mono">{winnerCard.codigo}</div>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                {cards.map((card, idx) => {
+                  const pct = totalCells ? Math.round((card.completedCells / totalCells) * 100) : 0;
+                  const isExpanded = expandedCode === card.codigo;
+                  return (
+                    <div key={card.codigo}>
+                      <div
+                        className="flex items-center gap-3 cursor-pointer hover:bg-amber-50 rounded-lg p-2 transition"
+                        onClick={() => setExpandedCode(isExpanded ? null : card.codigo)}
+                      >
+                        <span className="text-sm font-semibold text-gray-400 w-5 text-right">{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-[#5c4a2e] truncate">
+                              {card.ownerNames.join(", ")}
+                              <span className="font-mono text-xs text-gray-400 ml-1">({card.codigo})</span>
+                            </span>
+                            <span className="text-xs text-gray-500 shrink-0 ml-2">{card.completedCells}/{totalCells}</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                        {card.completedAt && <span className="text-sm">🏆</span>}
+                        <span className="text-xs text-gray-400">{isExpanded ? "▲" : "▼"}</span>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-2 mb-1">
+                          <CardViewer card={card} allCards={allCards} onRefresh={loadCards} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Collage */}
+          {leaderboardMode === "collage" && <CollageView cards={cards} />}
         </section>
       )}
 
