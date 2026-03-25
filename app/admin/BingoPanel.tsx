@@ -103,6 +103,77 @@ function OverrideModal({
   );
 }
 
+// ── Admin image lightbox ──────────────────────────────────────────────────────
+
+function AdminImageLightbox({
+  cell,
+  ownerCodigo,
+  onClose,
+  onDeleted,
+}: {
+  cell: EnrichedCell;
+  ownerCodigo: string;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`¿Borrar la foto de "${cell.targetNames.join(" y ")}" (${ownerCodigo})?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/bingo/cards/${ownerCodigo}/${cell.position}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      onDeleted();
+    } catch {
+      alert("No se pudo borrar");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white/60 hover:text-white text-2xl leading-none"
+        >
+          ✕
+        </button>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cell.mediaUrl!}
+          alt={cell.targetNames.join(" y ")}
+          className="w-full rounded-2xl max-h-[65vh] object-contain"
+        />
+
+        <div className="text-center space-y-0.5">
+          <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>
+          <p className="text-white/50 text-xs">foto de {ownerCodigo}</p>
+        </div>
+
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
+        >
+          {deleting ? "Borrando..." : "Borrar foto"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Bingo card viewer ─────────────────────────────────────────────────────────
 
 function CardViewer({
@@ -115,23 +186,9 @@ function CardViewer({
   onRefresh: () => void;
 }) {
   const [overrideCell, setOverrideCell] = useState<EnrichedCell | null>(null);
-  const [deleting, setDeleting] = useState<number | null>(null);
+  const [lightboxCell, setLightboxCell] = useState<EnrichedCell | null>(null);
   const sorted = [...card.cells].sort((a, b) => a.position - b.position);
   const cols = Math.round(Math.sqrt(card.totalCells));
-
-  async function handleDelete(cell: EnrichedCell) {
-    if (!confirm(`¿Borrar la foto de "${cell.targetNames[0]}" de ${card.codigo}?`)) return;
-    setDeleting(cell.position);
-    try {
-      const res = await fetch(`/api/admin/bingo/cards/${card.codigo}/${cell.position}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      onRefresh();
-    } catch {
-      alert("No se pudo borrar");
-    } finally {
-      setDeleting(null);
-    }
-  }
 
   return (
     <div className="border border-[#e8d9c0] rounded-xl p-4">
@@ -154,8 +211,9 @@ function CardViewer({
           return (
             <div
               key={cell.position}
-              className={`relative aspect-square rounded-lg border text-center flex flex-col items-center justify-center p-1 ${
-                done ? "border-[#d4af37] bg-[#d4af37]/10" : "border-gray-200 bg-gray-50"
+              onClick={() => done ? setLightboxCell(cell) : setOverrideCell(cell)}
+              className={`relative aspect-square rounded-lg border text-center flex flex-col items-center justify-center p-1 cursor-pointer transition-transform active:scale-95 ${
+                done ? "border-[#d4af37] bg-[#d4af37]/10" : "border-gray-200 bg-gray-50 hover:border-[#d4af37]"
               }`}
             >
               {done && cell.mediaUrl && (
@@ -169,24 +227,22 @@ function CardViewer({
                   {cell.targetNames[0] ?? cell.targetCodigo}
                 </div>
                 {!done && (
-                  <button onClick={() => setOverrideCell(cell)} className="mt-0.5 text-[9px] text-[#d4af37] underline">
-                    cambiar
-                  </button>
+                  <div className="mt-0.5 text-[9px] text-[#d4af37]">cambiar</div>
                 )}
               </div>
-              {done && (
-                <button
-                  onClick={() => handleDelete(cell)}
-                  disabled={deleting === cell.position}
-                  className="absolute top-0.5 right-0.5 z-20 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] flex items-center justify-center hover:bg-red-500 transition disabled:opacity-50"
-                >
-                  {deleting === cell.position ? "…" : "✕"}
-                </button>
-              )}
             </div>
           );
         })}
       </div>
+
+      {lightboxCell && (
+        <AdminImageLightbox
+          cell={lightboxCell}
+          ownerCodigo={card.codigo}
+          onClose={() => setLightboxCell(null)}
+          onDeleted={() => { setLightboxCell(null); onRefresh(); }}
+        />
+      )}
 
       {overrideCell && (
         <OverrideModal

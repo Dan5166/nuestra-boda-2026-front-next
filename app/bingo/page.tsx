@@ -322,9 +322,89 @@ function QRScanner({
   );
 }
 
+// ── Image lightbox ────────────────────────────────────────────────────────────
+
+function ImageLightbox({
+  cell,
+  codigo,
+  onClose,
+  onDeleted,
+}: {
+  cell: Cell;
+  codigo: string;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`¿Borrar la foto con ${cell.targetNames.join(" y ")}?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/bingo/delete-cell", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo, position: cell.position }),
+      });
+      if (!res.ok) throw new Error();
+      onDeleted();
+    } catch {
+      alert("No se pudo borrar la foto");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white/60 hover:text-white text-2xl leading-none"
+        >
+          ✕
+        </button>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={cell.mediaUrl!}
+          alt={cell.targetNames.join(" y ")}
+          className="w-full rounded-2xl max-h-[65vh] object-contain"
+        />
+
+        <div className="text-center">
+          <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>
+        </div>
+
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
+        >
+          {deleting ? "Borrando..." : "Borrar foto"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Progress grid ─────────────────────────────────────────────────────────────
 
-function ProgressGrid({ card, cols }: { card: Card; cols: number }) {
+function ProgressGrid({
+  card,
+  cols,
+  onCellClick,
+}: {
+  card: Card;
+  cols: number;
+  onCellClick: (cell: Cell) => void;
+}) {
   const sorted = [...card.cells].sort((a, b) => a.position - b.position);
   return (
     <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
@@ -333,8 +413,11 @@ function ProgressGrid({ card, cols }: { card: Card; cols: number }) {
         return (
           <div
             key={cell.position}
+            onClick={() => done && onCellClick(cell)}
             className={`relative aspect-square rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
-              done ? "border-[#d4af37] bg-[#d4af37]/10" : "border-gray-200 bg-gray-50"
+              done
+                ? "border-[#d4af37] bg-[#d4af37]/10 cursor-pointer active:scale-95 transition-transform"
+                : "border-gray-200 bg-gray-50"
             }`}
           >
             {done && cell.mediaUrl && (
@@ -379,6 +462,7 @@ function BingoContent() {
   const [isReplacing, setIsReplacing] = useState(false);
 
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [lightboxCell, setLightboxCell] = useState<Cell | null>(null);
   const [toast, setToast] = useState("");
   const lastToken = useRef("");
 
@@ -638,7 +722,7 @@ function BingoContent() {
 
               {tab === "carton" && (
                 <>
-                  <ProgressGrid card={card} cols={cols} />
+                  <ProgressGrid card={card} cols={cols} onCellClick={setLightboxCell} />
                   <button
                     onClick={() => { setCodigo(""); setCard(null); setStep("codigo"); setScannerActive(false); }}
                     className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600 underline"
@@ -660,6 +744,20 @@ function BingoContent() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#3d2c10] text-white text-sm px-5 py-3 rounded-full shadow-xl">
           {toast}
         </div>
+      )}
+
+      {/* Image lightbox */}
+      {lightboxCell && (
+        <ImageLightbox
+          cell={lightboxCell}
+          codigo={codigo}
+          onClose={() => setLightboxCell(null)}
+          onDeleted={async () => {
+            setLightboxCell(null);
+            const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
+            if (res.ok) { const d = await res.json(); if (d.card) setCard(d.card); }
+          }}
+        />
       )}
 
       {/* Upload modal */}
