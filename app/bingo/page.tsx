@@ -371,6 +371,7 @@ function BingoContent() {
   const [loadingCard, setLoadingCard] = useState(false);
   const [cardError, setCardError] = useState("");
 
+  const [tab, setTab] = useState<"camara" | "carton">("camara");
   const [scannerActive, setScannerActive] = useState(false);
   const [scanning, setScanning] = useState(false);
 
@@ -409,8 +410,8 @@ function BingoContent() {
   }, []);
 
   useEffect(() => {
-    setScannerActive(step === "scanner" && card !== null && scannedCell === null);
-  }, [step, card, scannedCell]);
+    setScannerActive(step === "scanner" && card !== null && tab === "camara" && scannedCell === null);
+  }, [step, card, tab, scannedCell]);
 
   // ── QR detection ───────────────────────────────────────────────────────────
 
@@ -583,9 +584,9 @@ function BingoContent() {
         )}
 
         {step === "scanner" && card && (
-          <>
+          <div className="bg-white/95 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
             {/* Header */}
-            <div className="bg-white/95 px-5 py-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
+            <div className="px-5 pt-5 pb-4 border-b border-[#f0e4cc]">
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-lg font-bold text-[#5c4a2e]">Bingo de la boda</h2>
@@ -604,29 +605,50 @@ function BingoContent() {
               </div>
             </div>
 
-            {/* Scanner */}
-            <div className="bg-white/95 p-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-              {scanning && (
-                <div className="flex items-center justify-center gap-2 py-2 mb-2 text-sm text-[#8a6d3b]">
-                  <div className="w-4 h-4 border-2 border-[#d4af37] border-t-transparent rounded-full animate-spin" />
-                  Verificando...
-                </div>
-              )}
-              <QRScanner onDetected={handleQRDetected} active={scannerActive} />
+            {/* Tabs */}
+            <div className="flex border-b border-[#f0e4cc]">
+              {(["camara", "carton"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                    tab === t
+                      ? "text-[#8a6d3b] border-b-2 border-[#d4af37] -mb-px"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  {t === "camara" ? "📷 Cámara" : "🎲 Mi cartón"}
+                </button>
+              ))}
             </div>
 
-            {/* Progress grid */}
-            <div className="bg-white/95 p-4 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-              <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Tu cartón</p>
-              <ProgressGrid card={card} cols={cols} />
-              <button
-                onClick={() => { setCodigo(""); setCard(null); setStep("codigo"); setScannerActive(false); }}
-                className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600 underline"
-              >
-                Cambiar código
-              </button>
+            {/* Tab content */}
+            <div className="p-4">
+              {tab === "camara" && (
+                <>
+                  {scanning && (
+                    <div className="flex items-center justify-center gap-2 py-2 mb-2 text-sm text-[#8a6d3b]">
+                      <div className="w-4 h-4 border-2 border-[#d4af37] border-t-transparent rounded-full animate-spin" />
+                      Verificando...
+                    </div>
+                  )}
+                  <QRScanner onDetected={handleQRDetected} active={scannerActive} />
+                </>
+              )}
+
+              {tab === "carton" && (
+                <>
+                  <ProgressGrid card={card} cols={cols} />
+                  <button
+                    onClick={() => { setCodigo(""); setCard(null); setStep("codigo"); setScannerActive(false); }}
+                    className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600 underline"
+                  >
+                    Cambiar código
+                  </button>
+                </>
+              )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
