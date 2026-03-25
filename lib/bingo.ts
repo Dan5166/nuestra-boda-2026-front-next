@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { dynamoClient } from './dynamodb';
+import crypto from 'crypto';
 
 // Bingo settings stored in the existing GallerySettings table
 const SETTINGS_TABLE = 'GallerySettings';
@@ -108,6 +109,50 @@ export async function resetBingoCell(
   await saveBingoCard({ ...card, cells, completedAt: null });
   return oldKey;
 }
+
+// ── QR Tokens ────────────────────────────────────────────────────────────────
+// tokens: { [token]: targetCodigo } — stored alongside bingo settings
+
+const QR_TOKENS_SK = 'BINGO_QR_TOKENS';
+
+export async function getQRTokens(): Promise<Record<string, string>> {
+  try {
+    const { Item } = await dynamoClient.send(
+      new GetCommand({ TableName: SETTINGS_TABLE, Key: { PK: SETTINGS_PK, SK: QR_TOKENS_SK } })
+    );
+    return (Item?.tokens ?? {}) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+export async function saveQRTokens(tokens: Record<string, string>): Promise<void> {
+  await dynamoClient.send(
+    new PutCommand({ TableName: SETTINGS_TABLE, Item: { PK: SETTINGS_PK, SK: QR_TOKENS_SK, tokens } })
+  );
+}
+
+export async function resolveQRToken(token: string): Promise<string | null> {
+  const tokens = await getQRTokens();
+  return tokens[token] ?? null;
+}
+
+/**
+ * Generates one opaque token per unique targetCodigo found across all cards.
+ * Tokens are short (8 hex chars), not guessable, and stored in DynamoDB.
+ */
+export async function generateQRTokens(targetCodigos: string[]): Promise<Record<string, string>> {
+  const unique = [...new Set(targetCodigos)];
+  const tokens: Record<string, string> = {};
+  for (const code of unique) {
+    const token = crypto.randomBytes(4).toString('hex').toUpperCase();
+    tokens[token] = code;
+  }
+  await saveQRTokens(tokens);
+  return tokens;
+}
+
+// ── Overrides ────────────────────────────────────────────────────────────────
 
 export async function overrideBingoCell(
   codigo: string,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import BingoQRPanel from "./BingoQRPanel";
 
 interface BingoSettings {
   cols: number;
@@ -426,6 +427,9 @@ export default function BingoPanel() {
       )}
 
       {loadingCards && <p className="text-center text-sm text-gray-400">Cargando cartones...</p>}
+
+      {/* QR Codes */}
+      <BingoQRPanel />
     </div>
   );
 }
