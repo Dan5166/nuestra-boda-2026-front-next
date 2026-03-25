@@ -21,6 +21,7 @@ interface Settings {
   maxVideosPerCode: number;
   maxFileSizeMB: number;
   enabled: boolean;
+  deletionLocked: boolean;
 }
 
 interface FileItem {
@@ -31,6 +32,7 @@ interface FileItem {
 }
 
 interface LightboxItem {
+  key: string;
   url: string;
   isVideo: boolean;
   uploaderNames: string[];
@@ -77,6 +79,7 @@ function GaleriaContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
+  const [deletingLightbox, setDeletingLightbox] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -377,7 +380,7 @@ function GaleriaContent() {
             files={ownFiles}
             loading={loadingFiles}
             emptyText="Aún no has subido archivos"
-            onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
+            onOpen={(f) => setLightbox({ key: f.key, url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
           />
         </section>
 
@@ -392,7 +395,7 @@ function GaleriaContent() {
               files={involvedFiles}
               loading={loadingFiles}
               emptyText="Nadie te ha etiquetado aún"
-              onOpen={(f) => setLightbox({ url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
+              onOpen={(f) => setLightbox({ key: f.key, url: f.url, isVideo: isVideo(f.key), uploaderNames: f.uploaderNames, involvedNames: f.involvedNames, isOwn: f.isOwn })}
             />
           </section>
         )}
@@ -435,6 +438,41 @@ function GaleriaContent() {
                   <span className="text-white/40">Con </span>
                   <span className="text-white/90">{lightbox.involvedNames.join(", ")}</span>
                 </span>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <a
+                href={`/api/download?key=${encodeURIComponent(lightbox.key)}`}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Descargar
+              </a>
+              {lightbox.isOwn && !settings?.deletionLocked && (
+                <button
+                  disabled={deletingLightbox}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!confirm('¿Eliminar este archivo?')) return;
+                    setDeletingLightbox(true);
+                    try {
+                      await fetch('/api/gallery/delete', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ codigo, key: lightbox.key }),
+                      });
+                      setAllFiles((prev) => prev.filter((f) => f.key !== lightbox.key));
+                      setLightbox(null);
+                    } finally {
+                      setDeletingLightbox(false);
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white text-sm rounded-lg transition disabled:opacity-50"
+                >
+                  {deletingLightbox ? 'Eliminando…' : 'Eliminar'}
+                </button>
               )}
             </div>
           </div>

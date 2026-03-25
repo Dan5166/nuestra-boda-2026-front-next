@@ -18,9 +18,11 @@ interface Settings {
   maxVideosPerCode: number;
   maxFileSizeMB: number;
   enabled: boolean;
+  deletionLocked: boolean;
 }
 
 interface LightboxItem {
+  key: string;
   url: string;
   isVideo: boolean;
   names: string[];
@@ -47,6 +49,7 @@ export default function GalleryPanel() {
     maxVideosPerCode: 2,
     maxFileSizeMB: 50,
     enabled: true,
+    deletionLocked: false,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -86,6 +89,7 @@ export default function GalleryPanel() {
 
   function openLightbox(file: UploadedFile) {
     setLightbox({
+      key: file.key,
       url: file.url,
       isVideo: isVideo(file.key),
       names: file.names,
@@ -120,7 +124,7 @@ export default function GalleryPanel() {
         body: JSON.stringify({ key }),
       });
       setFiles((prev) => prev.filter((f) => f.key !== key));
-      if (lightbox?.url === files.find((f) => f.key === key)?.url) {
+      if (lightbox?.key === key) {
         setLightbox(null);
       }
     } finally {
@@ -184,6 +188,15 @@ export default function GalleryPanel() {
             </select>
           </label>
         </div>
+        <label className="mt-4 flex items-center gap-2 text-sm cursor-pointer w-fit">
+          <input
+            type="checkbox"
+            checked={settings.deletionLocked}
+            onChange={(e) => setSettings((s) => ({ ...s, deletionLocked: e.target.checked }))}
+            className="accent-red-500 w-4 h-4"
+          />
+          Bloquear borrado de archivos (invitados)
+        </label>
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={handleSaveSettings}
@@ -358,6 +371,25 @@ export default function GalleryPanel() {
                 ))}
               </div>
             )}
+            <div className="flex gap-3 mt-1">
+              <a
+                href={`/api/download?key=${encodeURIComponent(lightbox.key)}`}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Descargar
+              </a>
+              <button
+                disabled={deleting === lightbox.key}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(lightbox.key);
+                }}
+                className="px-4 py-2 bg-red-500/80 hover:bg-red-500 text-white text-sm rounded-lg transition disabled:opacity-50"
+              >
+                {deleting === lightbox.key ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
           </div>
 
           {/* Close button */}

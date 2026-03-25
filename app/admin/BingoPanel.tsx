@@ -151,12 +151,15 @@ function AdminImageLightbox({
           ✕
         </button>
 
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cell.mediaUrl!}
-          alt={cell.targetNames.join(" y ")}
-          className="w-full rounded-2xl max-h-[65vh] object-contain"
-        />
+        <div className="relative w-full aspect-square">
+          <Image
+            src={cell.mediaUrl!}
+            alt={cell.targetNames.join(" y ")}
+            fill
+            sizes="384px"
+            className="object-contain rounded-2xl"
+          />
+        </div>
 
         <div className="text-center space-y-0.5">
           <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>
@@ -304,13 +307,15 @@ function CollageView({ cards }: { cards: EnrichedCard[] }) {
     <div className="columns-2 sm:columns-3 gap-2 space-y-2">
       {photos.map((photo, i) => (
         <div key={i} className="break-inside-avoid relative group rounded-xl overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photo.url}
-            alt={photo.targetNames.join(" y ")}
-            className="w-full object-cover block"
-            loading="lazy"
-          />
+          <div className="relative w-full aspect-square">
+            <Image
+              src={photo.url}
+              alt={photo.targetNames.join(" y ")}
+              fill
+              sizes="(max-width: 640px) 50vw, 33vw"
+              className="object-cover"
+            />
+          </div>
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <p className="text-white text-[11px] font-semibold leading-tight">
               {photo.targetNames.join(" & ")}

@@ -107,12 +107,15 @@ function UploadModal({
         {confirmingReplace && !file && (
           <div className="space-y-4">
             {cell.mediaUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={cell.mediaUrl}
-                alt="foto actual"
-                className="w-full rounded-xl max-h-40 object-cover opacity-70"
-              />
+              <div className="relative w-full aspect-video">
+                <Image
+                  src={cell.mediaUrl}
+                  alt="foto actual"
+                  fill
+                  sizes="384px"
+                  className="object-cover rounded-xl opacity-70"
+                />
+              </div>
             )}
             <p className="text-sm text-gray-600 text-center">
               Ya tenés foto con esta persona. ¿Querés reemplazarla?
@@ -377,12 +380,15 @@ function ImageLightbox({
           ✕
         </button>
 
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={cell.mediaUrl!}
-          alt={cell.targetNames.join(" y ")}
-          className="w-full rounded-2xl max-h-[65vh] object-contain"
-        />
+        <div className="relative w-full aspect-square">
+          <Image
+            src={cell.mediaUrl!}
+            alt={cell.targetNames.join(" y ")}
+            fill
+            sizes="384px"
+            className="object-contain rounded-2xl"
+          />
+        </div>
 
         <div className="text-center">
           <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>

@@ -34,6 +34,7 @@ export async function PUT(req: NextRequest) {
       maxVideosPerCode: Number(body.maxVideosPerCode),
       maxFileSizeMB: Number(body.maxFileSizeMB),
       enabled: Boolean(body.enabled),
+      deletionLocked: Boolean(body.deletionLocked),
     };
 
     if (

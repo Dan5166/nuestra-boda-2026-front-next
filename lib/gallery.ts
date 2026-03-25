@@ -10,6 +10,7 @@ export interface GallerySettings {
   maxVideosPerCode: number;
   maxFileSizeMB: number;
   enabled: boolean;
+  deletionLocked: boolean;
 }
 
 const DEFAULT_SETTINGS: GallerySettings = {
@@ -17,6 +18,7 @@ const DEFAULT_SETTINGS: GallerySettings = {
   maxVideosPerCode: 2,
   maxFileSizeMB: 50,
   enabled: true,
+  deletionLocked: false,
 };
 
 export async function getGallerySettings(): Promise<GallerySettings> {
@@ -33,6 +35,7 @@ export async function getGallerySettings(): Promise<GallerySettings> {
       maxVideosPerCode: result.Item.maxVideosPerCode ?? DEFAULT_SETTINGS.maxVideosPerCode,
       maxFileSizeMB: result.Item.maxFileSizeMB ?? DEFAULT_SETTINGS.maxFileSizeMB,
       enabled: result.Item.enabled ?? DEFAULT_SETTINGS.enabled,
+      deletionLocked: result.Item.deletionLocked ?? DEFAULT_SETTINGS.deletionLocked,
     };
   } catch {
     return DEFAULT_SETTINGS;
