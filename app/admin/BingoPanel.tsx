@@ -7,6 +7,7 @@ import BingoQRPanel from "./BingoQRPanel";
 interface BingoSettings {
   cols: number;
   enabled: boolean;
+  deletionLocked: boolean;
 }
 
 interface EnrichedCell {
@@ -162,13 +163,23 @@ function AdminImageLightbox({
           <p className="text-white/50 text-xs">foto de {ownerCodigo}</p>
         </div>
 
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
-        >
-          {deleting ? "Borrando..." : "Borrar foto"}
-        </button>
+        <div className="flex gap-2 w-full">
+          {cell.mediaKey && (
+            <a
+              href={`/api/download?key=${encodeURIComponent(cell.mediaKey)}`}
+              className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold text-center transition"
+            >
+              Descargar
+            </a>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
+          >
+            {deleting ? "Borrando..." : "Borrar"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -315,7 +326,7 @@ function CollageView({ cards }: { cards: EnrichedCard[] }) {
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function BingoPanel() {
-  const [settings, setSettings] = useState<BingoSettings>({ cols: 3, enabled: false });
+  const [settings, setSettings] = useState<BingoSettings>({ cols: 3, enabled: false, deletionLocked: false });
   const [cards, setCards] = useState<EnrichedCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -404,6 +415,15 @@ export default function BingoPanel() {
               onChange={(e) => setSettings((s) => ({ ...s, enabled: e.target.checked }))}
             />
             Bingo habilitado
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-red-500"
+              checked={settings.deletionLocked}
+              onChange={(e) => setSettings((s) => ({ ...s, deletionLocked: e.target.checked }))}
+            />
+            Bloquear borrado de fotos
           </label>
           <button
             onClick={saveSettings}

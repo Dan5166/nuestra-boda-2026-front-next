@@ -13,6 +13,7 @@ const CARDS_TABLE = 'BingoCards';
 export interface BingoSettings {
   cols: number;    // grid side length (2 → 2x2=4, 3 → 3x3=9, 4 → 4x4=16)
   enabled: boolean;
+  deletionLocked: boolean; // when true, guests cannot delete their own bingo photos
 }
 
 export interface BingoCell {
@@ -29,7 +30,7 @@ export interface BingoCard {
   completedAt: string | null;
 }
 
-const DEFAULT_SETTINGS: BingoSettings = { cols: 3, enabled: false };
+const DEFAULT_SETTINGS: BingoSettings = { cols: 3, enabled: false, deletionLocked: false };
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,11 @@ export async function getBingoSettings(): Promise<BingoSettings> {
       new GetCommand({ TableName: SETTINGS_TABLE, Key: { PK: SETTINGS_PK, SK: SETTINGS_SK } })
     );
     if (!Item) return DEFAULT_SETTINGS;
-    return { cols: Item.cols ?? DEFAULT_SETTINGS.cols, enabled: Item.enabled ?? DEFAULT_SETTINGS.enabled };
+    return {
+      cols: Item.cols ?? DEFAULT_SETTINGS.cols,
+      enabled: Item.enabled ?? DEFAULT_SETTINGS.enabled,
+      deletionLocked: Item.deletionLocked ?? DEFAULT_SETTINGS.deletionLocked,
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }

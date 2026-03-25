@@ -20,6 +20,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json();
   const cols = Math.max(2, Math.min(5, Number(body.cols) || 3));
   const enabled = Boolean(body.enabled);
-  await saveBingoSettings({ cols, enabled });
-  return NextResponse.json({ cols, enabled });
+  const deletionLocked = Boolean(body.deletionLocked);
+  await saveBingoSettings({ cols, enabled, deletionLocked });
+  return NextResponse.json({ cols, enabled, deletionLocked });
 }

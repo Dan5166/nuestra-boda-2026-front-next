@@ -13,6 +13,7 @@ interface Cell {
   targetCodigo: string;
   targetNames: string[];
   completedAt: string | null;
+  mediaKey: string | null;
   mediaUrl: string | null;
 }
 
@@ -327,11 +328,13 @@ function QRScanner({
 function ImageLightbox({
   cell,
   codigo,
+  deletionLocked,
   onClose,
   onDeleted,
 }: {
   cell: Cell;
   codigo: string;
+  deletionLocked: boolean;
   onClose: () => void;
   onDeleted: () => void;
 }) {
@@ -346,10 +349,13 @@ function ImageLightbox({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ codigo, position: cell.position }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.message || "Error al borrar");
+      }
       onDeleted();
-    } catch {
-      alert("No se pudo borrar la foto");
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "No se pudo borrar la foto");
     } finally {
       setDeleting(false);
     }
@@ -382,13 +388,25 @@ function ImageLightbox({
           <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>
         </div>
 
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
-        >
-          {deleting ? "Borrando..." : "Borrar foto"}
-        </button>
+        <div className="flex gap-2 w-full">
+          {cell.mediaKey && (
+            <a
+              href={`/api/download?key=${encodeURIComponent(cell.mediaKey)}`}
+              className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold text-center transition"
+            >
+              Descargar
+            </a>
+          )}
+          {!deletionLocked && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
+            >
+              {deleting ? "Borrando..." : "Borrar"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -451,6 +469,7 @@ function BingoContent() {
   const [step, setStep] = useState<"codigo" | "scanner">(codeFromUrl ? "scanner" : "codigo");
   const [card, setCard] = useState<Card | null>(null);
   const [cols, setCols] = useState(3);
+  const [deletionLocked, setDeletionLocked] = useState(false);
   const [loadingCard, setLoadingCard] = useState(false);
   const [cardError, setCardError] = useState("");
 
@@ -478,6 +497,7 @@ function BingoContent() {
       if (!data.settings.enabled) throw new Error("El bingo está desactivado.");
       if (!data.card) throw new Error("Todavía no se generaron los cartones.");
       setCols(data.settings.cols);
+      setDeletionLocked(data.settings.deletionLocked ?? false);
       setCard(data.card);
       setStep("scanner");
     } catch (e: unknown) {
@@ -751,6 +771,7 @@ function BingoContent() {
         <ImageLightbox
           cell={lightboxCell}
           codigo={codigo}
+          deletionLocked={deletionLocked}
           onClose={() => setLightboxCell(null)}
           onDeleted={async () => {
             setLightboxCell(null);
