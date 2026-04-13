@@ -4,16 +4,18 @@ import { useState } from "react";
 import GuestsTable from "./GuestsTable";
 import GalleryPanel from "./GalleryPanel";
 import BingoPanel from "./BingoPanel";
+import PlaylistPanel from "./PlaylistPanel";
 
 const TABS = [
   { key: "invitados", label: "Invitados" },
   { key: "galeria", label: "Galería" },
   { key: "bingo", label: "Bingo" },
+  { key: "playlist", label: "Playlist" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["key"];
 
-export default function AdminTabs() {
+export default function AdminTabs({ username }: { username: string }) {
   const [active, setActive] = useState<Tab>("invitados");
 
   return (
@@ -37,6 +39,7 @@ export default function AdminTabs() {
       {active === "invitados" && <GuestsTable />}
       {active === "galeria" && <GalleryPanel />}
       {active === "bingo" && <BingoPanel />}
+      {active === "playlist" && <PlaylistPanel username={username} />}
     </div>
   );
 }

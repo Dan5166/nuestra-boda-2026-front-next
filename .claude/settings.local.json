@@ -4,7 +4,10 @@
       "Bash(npx tsc:*)",
       "Bash(xargs grep:*)",
       "Bash(npx next:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(wc:*)",
+      "Bash(aws:*)",
+      "Bash(where aws:*)"
     ]
   }
 }

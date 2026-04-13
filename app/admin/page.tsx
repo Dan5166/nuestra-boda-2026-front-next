@@ -25,7 +25,7 @@ export default async function AdminPage() {
           </form>
         </div>
 
-        <AdminTabs />
+        <AdminTabs username={session.username} />
       </div>
     </div>
   );
