@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyJwt, COOKIE_NAME } from '@/lib/auth';
-import { getAllSongs, createSong, updateSong, deleteSong } from '@/lib/playlist';
+import { getAllSongs, createSong, updateSong, deleteSong, fetchYoutubeDuration } from '@/lib/playlist';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -33,11 +33,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Título, artista y categoría son obligatorios' }, { status: 400 });
     }
 
+    let durationSecs = body.durationSecs ? Number(body.durationSecs) : 0;
+    if (!durationSecs && body.youtubeUrl) {
+      durationSecs = await fetchYoutubeDuration(body.youtubeUrl);
+    }
+
     const song = await createSong({
       title: body.title,
       artist: body.artist,
       category: body.category,
       subcategory: body.subcategory || null,
+      durationSecs,
       notes: body.notes || null,
       youtubeUrl: body.youtubeUrl || null,
     });
@@ -59,11 +65,17 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ message: 'Falta songId' }, { status: 400 });
     }
 
+    let durationSecs: number | undefined = body.durationSecs != null ? Number(body.durationSecs) : undefined;
+    if (body.youtubeUrl && (!durationSecs || durationSecs === 0)) {
+      durationSecs = await fetchYoutubeDuration(body.youtubeUrl);
+    }
+
     const song = await updateSong(body.songId, {
       title: body.title,
       artist: body.artist,
       category: body.category,
       subcategory: body.subcategory,
+      durationSecs,
       notes: body.notes,
       youtubeUrl: body.youtubeUrl,
     });

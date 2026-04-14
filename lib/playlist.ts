@@ -12,6 +12,7 @@ export interface Song {
   artist: string;
   category: string;
   subcategory: string | null;
+  durationSecs: number;
   votes: number;
   votedBy: string[];
   notes: string | null;
@@ -25,11 +26,47 @@ export type CreateSongInput = {
   artist: string;
   category: string;
   subcategory?: string | null;
+  durationSecs?: number;
   notes?: string | null;
   youtubeUrl?: string | null;
 };
 
-export type UpdateSongInput = Partial<CreateSongInput> & { votes?: number };
+export type UpdateSongInput = Partial<CreateSongInput>;
+
+// ── YouTube duration ────────────────────────────────────────────────────────
+
+function extractYoutubeId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/
+  );
+  return match?.[1] ?? null;
+}
+
+function parseIsoDuration(iso: string): number {
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
+}
+
+export async function fetchYoutubeDuration(url: string): Promise<number> {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  if (!apiKey) return 0;
+
+  const videoId = extractYoutubeId(url);
+  if (!videoId) return 0;
+
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?id=${videoId}&part=contentDetails&key=${apiKey}`
+    );
+    if (!res.ok) return 0;
+    const data = await res.json();
+    const duration = data.items?.[0]?.contentDetails?.duration;
+    return duration ? parseIsoDuration(duration) : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export async function getAllSongs(): Promise<Song[]> {
   const result = await dynamoClient.send(
@@ -59,6 +96,7 @@ export async function createSong(input: CreateSongInput): Promise<Song> {
     artist: input.artist.trim(),
     category: input.category,
     subcategory: input.subcategory?.trim() || null,
+    durationSecs: input.durationSecs ?? 0,
     votes: 0,
     votedBy: [],
     notes: input.notes?.trim() || null,
@@ -83,7 +121,7 @@ export async function updateSong(songId: string, input: UpdateSongInput): Promis
     artist: input.artist?.trim() ?? existing.artist,
     category: input.category ?? existing.category,
     subcategory: input.subcategory !== undefined ? (input.subcategory?.trim() || null) : existing.subcategory,
-    votes: input.votes ?? existing.votes,
+    durationSecs: input.durationSecs ?? existing.durationSecs,
     notes: input.notes !== undefined ? (input.notes?.trim() || null) : existing.notes,
     youtubeUrl: input.youtubeUrl !== undefined ? (input.youtubeUrl?.trim() || null) : existing.youtubeUrl,
     updatedAt: new Date().toISOString(),

@@ -8,6 +8,7 @@ interface Song {
   artist: string;
   category: string;
   subcategory: string | null;
+  durationSecs: number;
   votes: number;
   votedBy: string[];
   notes: string | null;
@@ -27,6 +28,34 @@ function extractYoutubeId(url: string): string | null {
   return null;
 }
 
+function formatDuration(totalSecs: number): string {
+  if (totalSecs === 0) return "—";
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function parseDurationInput(val: string): number {
+  const parts = val.split(":").map(Number);
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function secsToInput(secs: number): string {
+  if (secs === 0) return "";
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function sumDuration(songs: Song[]): number {
+  return songs.reduce((acc, s) => acc + (s.durationSecs ?? 0), 0);
+}
+
 const CATEGORIES: Record<string, string[]> = {
   Ceremonia: ["Entrada novio", "Entrada novia", "Ritos", "Salida novios del altar"],
   Cóctel: ["Entrada cóctel", "Música cóctel"],
@@ -44,6 +73,7 @@ type EditingSong = {
   subcategory: string;
   notes: string;
   youtubeUrl: string;
+  duration: string;
 };
 
 export default function PlaylistPanel({ username }: { username: string }) {
@@ -58,6 +88,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
   const [subcategory, setSubcategory] = useState("");
   const [notes, setNotes] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [duration, setDuration] = useState("");
   const [adding, setAdding] = useState(false);
 
   // Expanded player
@@ -124,6 +155,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
           artist,
           category,
           subcategory: subcategory || null,
+          durationSecs: parseDurationInput(duration),
           notes: notes || null,
           youtubeUrl: youtubeUrl || null,
         }),
@@ -140,6 +172,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
       setSubcategory("");
       setNotes("");
       setYoutubeUrl("");
+      setDuration("");
     } catch {
       setError("Error de conexión");
     } finally {
@@ -190,6 +223,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
       subcategory: song.subcategory ?? "",
       notes: song.notes ?? "",
       youtubeUrl: song.youtubeUrl ?? "",
+      duration: secsToInput(song.durationSecs ?? 0),
     });
   }
 
@@ -207,6 +241,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
           artist: editing.artist,
           category: editing.category,
           subcategory: editing.subcategory || null,
+          durationSecs: parseDurationInput(editing.duration),
           notes: editing.notes || null,
           youtubeUrl: editing.youtubeUrl || null,
         }),
@@ -292,7 +327,7 @@ export default function PlaylistPanel({ username }: { username: string }) {
             </label>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <label className="flex flex-col gap-1 text-sm">
               Link de YouTube (opcional)
               <input
@@ -300,6 +335,16 @@ export default function PlaylistPanel({ username }: { username: string }) {
                 value={youtubeUrl}
                 onChange={(e) => setYoutubeUrl(e.target.value)}
                 placeholder="https://www.youtube.com/watch?v=..."
+                className="border border-gray-300 rounded px-3 py-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Duración (m:ss)
+              <input
+                type="text"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="3:45"
                 className="border border-gray-300 rounded px-3 py-2"
               />
             </label>
@@ -332,20 +377,70 @@ export default function PlaylistPanel({ username }: { username: string }) {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow text-center">
-          <p className="text-2xl font-bold text-[#bf953f]">{songs.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Total canciones</p>
-        </div>
-        {CATEGORY_KEYS.map((cat) => (
-          <div key={cat} className="bg-white rounded-xl p-4 shadow text-center">
-            <p className="text-2xl font-bold text-[#8a6d3b]">
-              {songs.filter((s) => s.category === cat).length}
+      {/* Stats + durations */}
+      <div className="bg-white rounded-xl shadow p-6">
+        <h3 className="font-serif text-lg mb-4 text-[#5c4a2e]">Resumen de tiempos</h3>
+
+        {/* Global totals */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <div className="bg-[#fdfaf6] rounded-lg p-3 text-center">
+            <p className="text-xl font-bold text-[#bf953f]">{songs.length}</p>
+            <p className="text-xs text-gray-500">Canciones</p>
+            <p className="text-sm font-medium text-[#5c4a2e] mt-1">
+              {formatDuration(sumDuration(songs))}
             </p>
-            <p className="text-xs text-gray-500 mt-1">{cat}</p>
           </div>
-        ))}
+          {CATEGORY_KEYS.map((cat) => {
+            const catSongs = songs.filter((s) => s.category === cat);
+            return (
+              <div key={cat} className="bg-[#fdfaf6] rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-[#8a6d3b]">{catSongs.length}</p>
+                <p className="text-xs text-gray-500">{cat}</p>
+                <p className="text-sm font-medium text-[#5c4a2e] mt-1">
+                  {formatDuration(sumDuration(catSongs))}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Subcategory breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {CATEGORY_KEYS.map((cat) => {
+            const catSongs = songs.filter((s) => s.category === cat);
+            if (catSongs.length === 0) return null;
+            const subs = CATEGORIES[cat];
+            return (
+              <div key={cat} className="text-sm">
+                <p className="font-medium text-[#5c4a2e] mb-1">{cat}</p>
+                <div className="space-y-0.5">
+                  {subs.map((sub) => {
+                    const subSongs = catSongs.filter((s) => s.subcategory === sub);
+                    if (subSongs.length === 0) return null;
+                    return (
+                      <div key={sub} className="flex justify-between text-gray-600 pl-3">
+                        <span>{sub}</span>
+                        <span className="font-mono text-xs text-[#8a6d3b]">
+                          {subSongs.length} · {formatDuration(sumDuration(subSongs))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {/* Songs without subcategory */}
+                  {catSongs.filter((s) => !s.subcategory).length > 0 && (
+                    <div className="flex justify-between text-gray-400 pl-3 italic">
+                      <span>Sin subcategoría</span>
+                      <span className="font-mono text-xs">
+                        {catSongs.filter((s) => !s.subcategory).length} ·{" "}
+                        {formatDuration(sumDuration(catSongs.filter((s) => !s.subcategory)))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filter */}
@@ -442,6 +537,11 @@ export default function PlaylistPanel({ username }: { username: string }) {
                               {song.subcategory && (
                                 <span className="text-xs bg-[#f5edd6] text-[#8a6d3b] px-2 py-0.5 rounded-full">
                                   {song.subcategory}
+                                </span>
+                              )}
+                              {song.durationSecs > 0 && (
+                                <span className="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                                  {formatDuration(song.durationSecs)}
                                 </span>
                               )}
                               {song.notes && (
@@ -588,6 +688,19 @@ export default function PlaylistPanel({ username }: { username: string }) {
                   setEditing((prev) => prev && { ...prev, youtubeUrl: e.target.value })
                 }
                 placeholder="https://www.youtube.com/watch?v=..."
+                className="border border-gray-300 rounded px-3 py-2"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              Duración (m:ss)
+              <input
+                type="text"
+                value={editing.duration}
+                onChange={(e) =>
+                  setEditing((prev) => prev && { ...prev, duration: e.target.value })
+                }
+                placeholder="3:45"
                 className="border border-gray-300 rounded px-3 py-2"
               />
             </label>
