@@ -60,7 +60,7 @@ const CATEGORIES: Record<string, string[]> = {
   Ceremonia: ["Entrada Damas de honor, pastor y anillos", "Entrada novio", "Entrada novia", "Ritos", "Alabanza Cantada Miguel", "Salida novios del altar"],
   Cóctel: ["Entrada novios", "Música cóctel"],
   "Salón principal": ["Entrada novios", "Vals", "Música cena", "Juegos", "Ramo novia", "Actividad Novio"],
-  Fiesta: ["Música inicio fiesta especial novios", "Música fiesta"],
+  Fiesta: ["Música inicio fiesta especial novios", "Música fiesta", "Cuecas"],
 };
 
 const CATEGORY_KEYS = Object.keys(CATEGORIES);
@@ -104,6 +104,49 @@ export default function PlaylistPanel({ username }: { username: string }) {
 
   // Voting in progress
   const [votingId, setVotingId] = useState<string | null>(null);
+
+  function exportCsv() {
+    const subcategoryOrder = Object.values(CATEGORIES).flat();
+
+    const sorted = [...songs].sort((a, b) => {
+      const catA = CATEGORY_KEYS.indexOf(a.category);
+      const catB = CATEGORY_KEYS.indexOf(b.category);
+      if (catA !== catB) return catA - catB;
+      const subA = subcategoryOrder.indexOf(a.subcategory ?? "");
+      const subB = subcategoryOrder.indexOf(b.subcategory ?? "");
+      const ia = subA === -1 ? Infinity : subA;
+      const ib = subB === -1 ? Infinity : subB;
+      return ia - ib;
+    });
+
+    const escape = (v: string | null | undefined) => {
+      const s = v ?? "";
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+
+    const header = ["Categoría", "Subcategoría", "Título", "Artista", "Duración", "Votos", "Notas", "YouTube"];
+    const rows = sorted.map((s) => [
+      escape(s.category),
+      escape(s.subcategory),
+      escape(s.title),
+      escape(s.artist),
+      escape(s.durationSecs > 0 ? formatDuration(s.durationSecs) : ""),
+      String(s.votes),
+      escape(s.notes),
+      escape(s.youtubeUrl),
+    ]);
+
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "playlist-boda.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     fetch("/api/admin/playlist")
@@ -467,6 +510,13 @@ export default function PlaylistPanel({ username }: { username: string }) {
         <span className="text-sm text-gray-400">
           {filtered.length} canción{filtered.length !== 1 ? "es" : ""}
         </span>
+        <button
+          onClick={exportCsv}
+          disabled={songs.length === 0}
+          className="ml-auto px-4 py-2 text-sm border border-[#8a6d3b] text-[#8a6d3b] rounded-lg hover:bg-[#8a6d3b] hover:text-white transition disabled:opacity-40"
+        >
+          Exportar CSV
+        </button>
       </div>
 
       {/* Song list by category */}
