@@ -57,9 +57,9 @@ function sumDuration(songs: Song[]): number {
 }
 
 const CATEGORIES: Record<string, string[]> = {
-  Ceremonia: ["Entrada novio", "Entrada novia", "Ritos", "Salida novios del altar"],
-  Cóctel: ["Entrada cóctel", "Música cóctel"],
-  "Salón principal": ["Entrada salón", "Vals", "Música cena"],
+  Ceremonia: ["Entrada Damas de honor, pastor y anillos", "Entrada novio", "Entrada novia", "Ritos", "Alabanza Cantada Miguel", "Salida novios del altar"],
+  Cóctel: ["Entrada novios", "Música cóctel"],
+  "Salón principal": ["Entrada novios", "Vals", "Música cena", "Juegos", "Ramo novia", "Actividad Novio"],
   Fiesta: ["Música inicio fiesta especial novios", "Música fiesta"],
 };
 
