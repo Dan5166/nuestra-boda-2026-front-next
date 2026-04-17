@@ -9,8 +9,8 @@ const LINKS = [
   { href: "/", label: "Inicio" },
   { href: "/invitation", label: "Invitación" },
   { href: "/rsvp", label: "RSVP" },
-  { href: "/galeria", label: "Galería" },
-  { href: "/bingo", label: "Bingo" },
+  //{ href: "/galeria", label: "Galería" },
+  //{ href: "/bingo", label: "Bingo" },
 ];
 
 export default function Navbar() {
