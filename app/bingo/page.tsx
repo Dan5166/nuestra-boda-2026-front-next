@@ -2,807 +2,404 @@
 
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 import { getSavedCode, saveCode } from "@/lib/localCode";
-import Loader from "../components/Loader";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+const PHOTO_COUNT = 8;
 
-interface Cell {
-  position: number;
-  targetCodigo: string;
-  targetNames: string[];
-  completedAt: string | null;
-  mediaKey: string | null;
-  mediaUrl: string | null;
+type GameStatus = "waiting" | "started" | "ended";
+
+interface GameState {
+  status: GameStatus;
+  winnerNames?: string[];
 }
 
-interface Card {
-  codigo: string;
-  cells: Cell[];
-  completedAt: string | null;
-}
-
-interface ScannedCell {
-  targetNames: string[];
-  position: number;
-  completedAt: string | null;
-  mediaUrl: string | null;
-}
-
-interface UploadItem {
-  id: string;
-  targetNames: string[];
-  status: "uploading" | "done" | "error";
+interface FileItem {
+  file: File;
+  preview: string;
+  status: "pending" | "uploading" | "done" | "error";
   progress: number;
   error?: string;
 }
 
-// ── Upload modal ──────────────────────────────────────────────────────────────
-// Handles file selection + replace confirmation.
-// The actual S3 upload runs in the background (parent's responsibility).
-
-function UploadModal({
-  cell,
-  replacing,
-  onClose,
-  onConfirm,
-}: {
-  cell: ScannedCell;
-  replacing: boolean;
-  onClose: () => void;
-  onConfirm: (file: File) => Promise<void>;
-}) {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [confirmingReplace, setConfirmingReplace] = useState(replacing);
-  const [preparing, setPreparing] = useState(false);
-  const [error, setError] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  function handleFile(f: File) {
-    setFile(f);
-    setError("");
-    setPreview(URL.createObjectURL(f));
-  }
-
-  async function handleSubmit() {
-    if (!file) return;
-    setPreparing(true);
-    setError("");
-    try {
-      await onConfirm(file);
-      // onConfirm resolves once the upload is queued — modal closes externally
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error inesperado");
-      setPreparing(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={(e) => {
-        if (!preparing && e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide">Foto con</p>
-            <h3 className="text-lg font-bold text-[#5c4a2e]">
-              {cell.targetNames.join(" y ")}
-            </h3>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={preparing}
-            className="text-gray-400 hover:text-gray-700 text-xl leading-none disabled:opacity-30"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Replace confirmation */}
-        {confirmingReplace && !file && (
-          <div className="space-y-4">
-            {cell.mediaUrl && (
-              <div className="relative w-full aspect-video">
-                <Image
-                  src={cell.mediaUrl}
-                  alt="foto actual"
-                  fill
-                  sizes="384px"
-                  className="object-cover rounded-xl opacity-70"
-                />
-              </div>
-            )}
-            <p className="text-sm text-gray-600 text-center">
-              Ya tenés foto con esta persona. ¿Querés reemplazarla?
-            </p>
-            <button
-              onClick={() => setConfirmingReplace(false)}
-              className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl"
-            >
-              Sí, reemplazar
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600"
-            >
-              Cancelar
-            </button>
-          </div>
-        )}
-
-        {/* File picker */}
-        {!confirmingReplace && (
-          <div className="space-y-4">
-            {!preview ? (
-              <button
-                onClick={() => inputRef.current?.click()}
-                disabled={preparing}
-                className="w-full border-2 border-dashed border-[#d4af37] rounded-xl p-10 text-center text-[#8a6d3b] hover:bg-amber-50 transition disabled:opacity-50"
-              >
-                <div className="text-4xl mb-2">📷</div>
-                <div className="text-sm font-medium">Seleccionar foto</div>
-              </button>
-            ) : (
-              <div className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={preview}
-                  alt="preview"
-                  className="w-full rounded-xl max-h-52 object-cover"
-                />
-                <button
-                  onClick={() => { setFile(null); setPreview(null); }}
-                  disabled={preparing}
-                  className="absolute top-2 right-2 bg-white/80 rounded-full w-7 h-7 text-sm text-gray-600 hover:bg-white shadow disabled:opacity-30"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            />
-
-            {error && <p className="text-sm text-red-600 text-center">{error}</p>}
-
-            {file && (
-              <button
-                onClick={handleSubmit}
-                disabled={preparing}
-                className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {preparing ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Preparando...
-                  </>
-                ) : (
-                  "Subir foto"
-                )}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Upload tray ───────────────────────────────────────────────────────────────
-
-function UploadTray({ items }: { items: UploadItem[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex flex-col gap-2 items-center w-full max-w-xs px-4 pointer-events-none">
-      {items.map((item) => (
-        <div
-          key={item.id}
-          className={`w-full rounded-xl px-4 py-2.5 shadow-lg text-sm flex items-center gap-3 transition-all ${
-            item.status === "done"
-              ? "bg-green-700 text-white"
-              : item.status === "error"
-              ? "bg-red-700 text-white"
-              : "bg-[#3d2c10] text-white"
-          }`}
-        >
-          {item.status === "uploading" && (
-            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-          )}
-          {item.status === "done" && <span className="shrink-0">✓</span>}
-          {item.status === "error" && <span className="shrink-0">✕</span>}
-
-          <div className="flex-1 min-w-0">
-            <div className="truncate font-medium">{item.targetNames.join(" y ")}</div>
-            {item.status === "uploading" && (
-              <div className="mt-1 h-1 bg-white/30 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-white transition-all duration-200"
-                  style={{ width: `${item.progress}%` }}
-                />
-              </div>
-            )}
-            {item.status === "error" && (
-              <div className="text-xs opacity-80 truncate">{item.error}</div>
-            )}
-          </div>
-
-          {item.status === "uploading" && (
-            <span className="shrink-0 text-xs opacity-70">{item.progress}%</span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── QR Scanner ────────────────────────────────────────────────────────────────
-
-function QRScanner({
-  onDetected,
-  active,
-}: {
-  onDetected: (text: string) => void;
-  active: boolean;
-}) {
-  const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
-  const startedRef = useRef(false);
-  const divId = "qr-scanner-viewfinder";
-
-  useEffect(() => {
-    if (!active) {
-      if (startedRef.current && scannerRef.current) {
-        startedRef.current = false;
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
-      }
-      return;
-    }
-
-    let unmounted = false;
-
-    async function startScanner() {
-      const { Html5Qrcode } = await import("html5-qrcode");
-      if (unmounted) return;
-      const scanner = new Html5Qrcode(divId, { verbose: false });
-      scannerRef.current = scanner;
-      try {
-        await scanner.start(
-          { facingMode: "environment" },
-          { fps: 8, qrbox: { width: 220, height: 220 } },
-          (text) => { if (!unmounted) onDetected(text); },
-          () => {}
-        );
-        if (!unmounted) startedRef.current = true;
-      } catch {
-        scannerRef.current = null;
-      }
-    }
-
-    startScanner();
-
-    return () => {
-      unmounted = true;
-      if (startedRef.current && scannerRef.current) {
-        startedRef.current = false;
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
-
-  if (!active) return null;
-
-  return (
-    <div className="relative">
-      <div
-        id={divId}
-        className="w-full overflow-hidden rounded-xl"
-        style={{ minHeight: 260 }}
-      />
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="relative w-48 h-48">
-          {["top-0 left-0 border-t-4 border-l-4", "top-0 right-0 border-t-4 border-r-4",
-            "bottom-0 left-0 border-b-4 border-l-4", "bottom-0 right-0 border-b-4 border-r-4",
-          ].map((cls, i) => (
-            <span key={i} className={`absolute w-6 h-6 border-[#d4af37] rounded-sm ${cls}`} />
-          ))}
-        </div>
-      </div>
-      <p className="text-center text-xs text-gray-400 mt-2">
-        Apuntá la cámara al código QR del papel
-      </p>
-    </div>
-  );
-}
-
-// ── Image lightbox ────────────────────────────────────────────────────────────
-
-function ImageLightbox({
-  cell,
-  codigo,
-  deletionLocked,
-  onClose,
-  onDeleted,
-}: {
-  cell: Cell;
-  codigo: string;
-  deletionLocked: boolean;
-  onClose: () => void;
-  onDeleted: () => void;
-}) {
-  const [deleting, setDeleting] = useState(false);
-
-  async function handleDelete() {
-    if (!confirm(`¿Borrar la foto con ${cell.targetNames.join(" y ")}?`)) return;
-    setDeleting(true);
-    try {
-      const res = await fetch("/api/bingo/delete-cell", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigo, position: cell.position }),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Error al borrar");
-      }
-      onDeleted();
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "No se pudo borrar la foto");
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-sm flex flex-col items-center gap-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          onClick={onClose}
-          className="absolute -top-10 right-0 text-white/60 hover:text-white text-2xl leading-none"
-        >
-          ✕
-        </button>
-
-        <div className="relative w-full aspect-square">
-          <Image
-            src={cell.mediaUrl!}
-            alt={cell.targetNames.join(" y ")}
-            fill
-            sizes="384px"
-            className="object-contain rounded-2xl"
-          />
-        </div>
-
-        <div className="text-center">
-          <p className="text-white font-semibold text-base">{cell.targetNames.join(" y ")}</p>
-        </div>
-
-        <div className="flex gap-2 w-full">
-          {cell.mediaKey && (
-            <a
-              href={`/api/download?key=${encodeURIComponent(cell.mediaKey)}`}
-              className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm font-semibold text-center transition"
-            >
-              Descargar
-            </a>
-          )}
-          {!deletionLocked && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold disabled:opacity-50 transition"
-            >
-              {deleting ? "Borrando..." : "Borrar"}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Progress grid ─────────────────────────────────────────────────────────────
-
-function ProgressGrid({
-  card,
-  cols,
-  onCellClick,
-}: {
-  card: Card;
-  cols: number;
-  onCellClick: (cell: Cell) => void;
-}) {
-  const sorted = [...card.cells].sort((a, b) => a.position - b.position);
-  return (
-    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-      {sorted.map((cell) => {
-        const done = cell.completedAt !== null;
-        return (
-          <div
-            key={cell.position}
-            onClick={() => done && onCellClick(cell)}
-            className={`relative aspect-square rounded-lg border flex flex-col items-center justify-center text-center p-1 ${
-              done
-                ? "border-[#d4af37] bg-[#d4af37]/10 cursor-pointer active:scale-95 transition-transform"
-                : "border-gray-200 bg-gray-50"
-            }`}
-          >
-            {done && cell.mediaUrl && (
-              <>
-                <Image src={cell.mediaUrl} alt="bingo" fill sizes="80px" className="object-cover rounded-[5px]" />
-                <div className="absolute inset-0 bg-black/25 rounded-[5px]" />
-              </>
-            )}
-            <div className="relative z-10 text-[10px] leading-tight font-medium">
-              {done ? (
-                <span className="text-white text-sm">✓</span>
-              ) : (
-                <span className="text-[#5c4a2e]">{cell.targetNames[0] ?? "?"}</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Main content ──────────────────────────────────────────────────────────────
-
 function BingoContent() {
   const searchParams = useSearchParams();
-  const codeFromUrl = searchParams.get("code")?.toUpperCase() ?? "";
+  const codigoFromUrl = searchParams.get("code")?.toUpperCase() ?? "";
 
-  const [codigo, setCodigo] = useState(codeFromUrl);
-  const [codigoInput, setCodigoInput] = useState(codeFromUrl);
-  const [step, setStep] = useState<"codigo" | "scanner">(codeFromUrl ? "scanner" : "codigo");
-  const [card, setCard] = useState<Card | null>(null);
-  const [cols, setCols] = useState(3);
-  const [deletionLocked, setDeletionLocked] = useState(false);
-  const [loadingCard, setLoadingCard] = useState(false);
-  const [cardError, setCardError] = useState("");
+  const [codigo, setCodigo] = useState(codigoFromUrl);
+  const [codigoInput, setCodigoInput] = useState(codigoFromUrl);
+  const [verified, setVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
 
-  const [tab, setTab] = useState<"camara" | "carton">("camara");
-  const [scannerActive, setScannerActive] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const [game, setGame] = useState<GameState | null>(null);
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
 
-  const [scannedCell, setScannedCell] = useState<ScannedCell | null>(null);
-  const [isReplacing, setIsReplacing] = useState(false);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [countError, setCountError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadDone, setUploadDone] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
-  const [uploads, setUploads] = useState<UploadItem[]>([]);
-  const [lightboxCell, setLightboxCell] = useState<Cell | null>(null);
-  const [toast, setToast] = useState("");
-  const lastToken = useRef("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Card loading ────────────────────────────────────────────────────────────
-
-  async function loadCard(code: string) {
-    setLoadingCard(true);
-    setCardError("");
-    try {
-      const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(code)}`);
-      if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-      const data = await res.json();
-      if (!data.settings.enabled) throw new Error("El bingo está desactivado.");
-      if (!data.card) throw new Error("Todavía no se generaron los cartones.");
-      setCols(data.settings.cols);
-      setDeletionLocked(data.settings.deletionLocked ?? false);
-      setCard(data.card);
-      setStep("scanner");
-    } catch (e: unknown) {
-      setCardError(e instanceof Error ? e.message : "Error al cargar");
-    } finally {
-      setLoadingCard(false);
-    }
-  }
-
+  // Auto-verify from saved code
   useEffect(() => {
-    const code = codeFromUrl || getSavedCode();
-    if (code) { setCodigo(code); setCodigoInput(code); loadCard(code); }
+    const code = codigoFromUrl || getSavedCode();
+    if (code) handleVerify(code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Poll game status every 8 seconds
   useEffect(() => {
-    setScannerActive(step === "scanner" && card !== null && tab === "camara" && scannedCell === null);
-  }, [step, card, tab, scannedCell]);
+    if (!verified) return;
+    const load = () =>
+      fetch("/api/bingo/status")
+        .then((r) => r.json())
+        .then((data) => setGame(data))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
+  }, [verified]);
 
-  // ── QR detection ───────────────────────────────────────────────────────────
-
-  async function handleQRDetected(raw: string) {
-    if (scanning || scannedCell) return;
-
-    let token = raw;
+  async function handleVerify(code?: string) {
+    const c = (code ?? codigoInput).toUpperCase().trim();
+    if (!c) return;
+    setVerifying(true);
+    setVerifyError("");
     try {
-      const url = new URL(raw);
-      const t = url.searchParams.get("t");
-      if (t) token = t;
-    } catch { /* raw is already a plain token */ }
-
-    if (!token || token === lastToken.current) return;
-    lastToken.current = token;
-    setScanning(true);
-
-    try {
-      const res = await fetch(
-        `/api/bingo/escanear?t=${encodeURIComponent(token)}&codigo=${encodeURIComponent(codigo)}`
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.message || "QR no reconocido");
-        setTimeout(() => { lastToken.current = ""; }, 2000);
-        return;
-      }
-      setScannedCell({ targetNames: data.targetNames, position: data.position, completedAt: data.completedAt, mediaUrl: data.mediaUrl });
-      setIsReplacing(data.completedAt !== null);
-    } catch {
-      showToast("Error al leer el QR");
-      setTimeout(() => { lastToken.current = ""; }, 2000);
+      const res = await fetch(`/api/users/by-code/${c}`);
+      if (!res.ok) throw new Error("Código no encontrado");
+      saveCode(c);
+      setCodigo(c);
+      const [gameRes] = await Promise.all([
+        fetch("/api/bingo/status").then((r) => r.json()),
+      ]);
+      setGame(gameRes);
+      setVerified(true);
+    } catch (e: unknown) {
+      setVerifyError(e instanceof Error ? e.message : "Código no encontrado");
     } finally {
-      setScanning(false);
+      setVerifying(false);
     }
   }
 
-  // ── Background upload ───────────────────────────────────────────────────────
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    setCountError("");
+    setUploadError("");
 
-  function updateUpload(id: string, patch: Partial<UploadItem>) {
-    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
-  }
-
-  function removeUpload(id: string) {
-    setUploads((prev) => prev.filter((u) => u.id !== id));
-  }
-
-  async function handleConfirmUpload(file: File) {
-    if (!scannedCell) return;
-    const cell = scannedCell;
-    const position = cell.position;
-
-    // 1. Delete old photo if replacing (fast, blocks modal briefly)
-    if (isReplacing) {
-      const delRes = await fetch("/api/bingo/delete-cell", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigo, position }),
-      });
-      if (!delRes.ok) throw new Error("No se pudo borrar la foto anterior");
+    if (selected.length !== PHOTO_COUNT) {
+      setCountError(
+        `Tenés que seleccionar exactamente ${PHOTO_COUNT} fotos. Seleccionaste ${selected.length}.`
+      );
+      setFiles([]);
+      return;
     }
 
-    // 2. Get presign URL (fast, blocks modal briefly)
-    const presignRes = await fetch("/api/bingo/presign", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ codigo, position, fileName: file.name, contentType: file.type }),
-    });
-    if (!presignRes.ok) {
-      const d = await presignRes.json();
-      throw new Error(d.message || "Error al preparar la subida");
-    }
-    const { url, key } = await presignRes.json();
+    const items: FileItem[] = selected.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+      status: "pending",
+      progress: 0,
+    }));
+    setFiles(items);
+  }
 
-    // 3. Queue the upload and close the modal
-    const id = Math.random().toString(36).slice(2);
-    setUploads((prev) => [...prev, { id, targetNames: cell.targetNames, status: "uploading", progress: 0 }]);
-    setScannedCell(null);
-    lastToken.current = "";
+  async function handleUpload() {
+    if (files.length !== PHOTO_COUNT) return;
+    setUploading(true);
+    setUploadError("");
 
-    // 4. Run S3 upload in background
     try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable)
-            updateUpload(id, { progress: Math.round((e.loaded / e.total) * 100) });
-        };
-        xhr.onload = () =>
-          xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("Error al subir"));
-        xhr.onerror = () => reject(new Error("Error de red"));
-        xhr.open("PUT", url);
-        xhr.setRequestHeader("Content-Type", file.type);
-        xhr.send(file);
-      });
-
-      // 5. Confirm completion
-      const confirmRes = await fetch("/api/bingo/complete-cell", {
+      // 1. Get presigned URLs for all 8 files at once
+      const presignRes = await fetch("/api/bingo/presign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigo, position, key, size: file.size }),
+        body: JSON.stringify({
+          codigo,
+          files: files.map((f) => ({ name: f.file.name, type: f.file.type })),
+        }),
       });
-      if (!confirmRes.ok) {
-        const d = await confirmRes.json();
-        throw new Error(d.message || "Error al confirmar");
+      if (!presignRes.ok) {
+        const err = await presignRes.json();
+        throw new Error(err.message ?? "Error al obtener URLs");
+      }
+      const { urls } = await presignRes.json() as { urls: Array<{ url: string; key: string }> };
+
+      // 2. Upload all 8 files to S3 in parallel with progress tracking
+      const keys = await Promise.all(
+        urls.map(({ url, key }, i) =>
+          new Promise<string>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", url);
+            xhr.setRequestHeader("Content-Type", files[i].file.type);
+            xhr.upload.onprogress = (ev) => {
+              if (ev.lengthComputable) {
+                const pct = Math.round((ev.loaded / ev.total) * 100);
+                setFiles((prev) =>
+                  prev.map((f, idx) => (idx === i ? { ...f, status: "uploading", progress: pct } : f))
+                );
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                setFiles((prev) =>
+                  prev.map((f, idx) => (idx === i ? { ...f, status: "done", progress: 100 } : f))
+                );
+                resolve(key);
+              } else {
+                setFiles((prev) =>
+                  prev.map((f, idx) => (idx === i ? { ...f, status: "error", error: `HTTP ${xhr.status}` } : f))
+                );
+                reject(new Error(`HTTP ${xhr.status}`));
+              }
+            };
+            xhr.onerror = () => {
+              setFiles((prev) =>
+                prev.map((f, idx) => (idx === i ? { ...f, status: "error", error: "Error de red" } : f))
+              );
+              reject(new Error("Error de red"));
+            };
+            setFiles((prev) =>
+              prev.map((f, idx) => (idx === i ? { ...f, status: "uploading", progress: 0 } : f))
+            );
+            xhr.send(files[i].file);
+          })
+        )
+      );
+
+      // 3. Record submission
+      const submitRes = await fetch("/api/bingo/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo, keys }),
+      });
+      if (!submitRes.ok) {
+        const err = await submitRes.json();
+        throw new Error(err.message ?? "Error al registrar envío");
       }
 
-      // 6. Mark done + refresh card
-      updateUpload(id, { status: "done", progress: 100 });
-      setTimeout(() => removeUpload(id), 3500);
-
-      const cardRes = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
-      if (cardRes.ok) {
-        const data = await cardRes.json();
-        if (data.card) {
-          setCard(data.card);
-          if (data.card.completedAt) showToast("🎉 ¡Completaste el bingo!");
-        }
-      }
+      setUploadDone(true);
+      setAlreadySubmitted(true);
     } catch (e: unknown) {
-      updateUpload(id, { status: "error", error: e instanceof Error ? e.message : "Error" });
-      setTimeout(() => removeUpload(id), 5000);
+      setUploadError(e instanceof Error ? e.message : "Error al subir las fotos");
+    } finally {
+      setUploading(false);
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(""), 3500);
+  // ── Render: Code entry ─────────────────────────────────────────────────────
+  if (!verified) {
+    return (
+      <div className="min-h-screen bg-[#fdfaf6] flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center">
+          <p className="font-serif text-2xl text-[#5c4a2e] mb-2">Bingo de la boda</p>
+          <p className="text-sm text-[#8a6d3b] mb-6">
+            Ingresá tu código de invitación para participar
+          </p>
+          <input
+            type="text"
+            className="w-full border border-gray-300 rounded-lg px-4 py-2 text-center tracking-widest uppercase text-[#5c4a2e] mb-4 focus:outline-none focus:border-[#bf953f]"
+            placeholder="ABC123"
+            value={codigoInput}
+            onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
+            onKeyDown={(e) => e.key === "Enter" && handleVerify()}
+          />
+          {verifyError && <p className="text-red-500 text-sm mb-3">{verifyError}</p>}
+          <button
+            onClick={() => handleVerify()}
+            disabled={verifying || !codigoInput}
+            className="w-full py-2 rounded-lg bg-[#bf953f] text-white font-medium hover:bg-[#aa771c] transition disabled:opacity-50"
+          >
+            {verifying ? "Verificando..." : "Ingresar"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
-  const completedCells = card ? card.cells.filter((c) => c.completedAt !== null).length : 0;
-  const totalCells = card ? card.cells.length : 0;
+  // ── Render: Waiting ────────────────────────────────────────────────────────
+  if (!game || game.status === "waiting") {
+    return (
+      <div className="min-h-screen bg-[#fdfaf6] flex flex-col items-center justify-center px-4 gap-6 text-center">
+        <div className="text-6xl">🎉</div>
+        <p className="font-serif text-2xl text-[#5c4a2e]">Bingo de la boda</p>
+        <p className="text-[#8a6d3b] max-w-xs">
+          El juego todavía no comenzó. ¡Quedate atento cuando empiece!
+        </p>
+        <span className="text-xs text-gray-400">Código: <span className="font-mono">{codigo}</span></span>
+      </div>
+    );
+  }
 
-  if (loadingCard) return <Loader />;
+  // ── Render: Ended ──────────────────────────────────────────────────────────
+  if (game.status === "ended") {
+    const winner = game.winnerNames;
+    return (
+      <div className="min-h-screen bg-[#fdfaf6] flex flex-col items-center justify-center px-4 gap-6 text-center">
+        <div className="text-6xl">🏆</div>
+        <p className="font-serif text-3xl text-[#5c4a2e]">¡El juego terminó!</p>
+        {winner && winner.length > 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg p-6 max-w-sm w-full">
+            <p className="text-sm text-[#8a6d3b] mb-2">Ganador/a</p>
+            <p className="font-serif text-2xl text-[#d4af37] font-bold">
+              {winner.join(" & ")}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[#8a6d3b]">Nadie completó el bingo esta vez.</p>
+        )}
+        <span className="text-xs text-gray-400">Código: <span className="font-mono">{codigo}</span></span>
+      </div>
+    );
+  }
+
+  // ── Render: Started — already submitted ───────────────────────────────────
+  if (alreadySubmitted || uploadDone) {
+    return (
+      <div className="min-h-screen bg-[#fdfaf6] flex flex-col items-center justify-center px-4 gap-5 text-center">
+        <div className="text-6xl">✅</div>
+        <p className="font-serif text-2xl text-[#5c4a2e]">¡Fotos enviadas!</p>
+        <p className="text-[#8a6d3b] max-w-xs">
+          Tus 8 fotos fueron registradas. El resultado se anunciará cuando termine el juego.
+        </p>
+        <span className="text-xs text-gray-400">Código: <span className="font-mono">{codigo}</span></span>
+      </div>
+    );
+  }
+
+  // ── Render: Started — upload form ─────────────────────────────────────────
+  const pending = files.filter((f) => f.status === "pending").length;
+  const allReady = files.length === PHOTO_COUNT && files.every((f) => f.status === "pending");
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4 bg-cover bg-center"
-      style={{ backgroundImage: "url(/assets/fondo-desktop.webp)" }}
-    >
-      <div className="fixed inset-0 bg-cover bg-center md:hidden" style={{ backgroundImage: "url(/assets/fondo-movil.webp)" }} />
+    <div className="min-h-screen bg-[#fdfaf6] text-[#5c4a2e] px-4 py-10">
+      <div className="max-w-lg mx-auto space-y-8">
+        <div className="text-center">
+          <p className="font-serif text-3xl mb-1">Bingo de la boda</p>
+          <p className="text-[#8a6d3b] text-sm">
+            Subí tus {PHOTO_COUNT} fotos para completar tu cartón
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Código: <span className="font-mono">{codigo}</span></p>
+        </div>
 
-      <div className="relative z-10 w-full max-w-lg space-y-4">
+        {/* Drop zone */}
+        <div
+          className="border-2 border-dashed border-[#d4af37] rounded-2xl p-8 text-center cursor-pointer hover:bg-[#fdf5e8] transition"
+          onClick={() => !uploading && fileInputRef.current?.click()}
+        >
+          <p className="text-4xl mb-3">📸</p>
+          <p className="text-[#8a6d3b] font-medium">
+            Seleccioná exactamente {PHOTO_COUNT} fotos
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            JPG, PNG, WEBP, HEIC · Todas juntas de una vez
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            className="hidden"
+            onChange={handleFileChange}
+            disabled={uploading}
+          />
+        </div>
 
-        {/* Code entry */}
-        {step === "codigo" && (
-          <div className="bg-white/95 p-6 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-            <h2 className="text-xl font-bold mb-1 text-[#5c4a2e]">Bingo de la boda</h2>
-            <p className="text-sm text-gray-500 mb-4">Ingresá tu código de invitación</p>
-            <input
-              placeholder="Código"
-              className="w-full border p-2.5 mb-4 uppercase font-mono tracking-widest text-sm rounded-lg"
-              value={codigoInput}
-              onChange={(e) => setCodigoInput(e.target.value.toUpperCase())}
-              onKeyDown={(e) => { if (e.key === "Enter" && codigoInput) { saveCode(codigoInput); setCodigo(codigoInput); loadCard(codigoInput); } }}
-              autoCapitalize="characters"
-              autoCorrect="off"
-            />
-            <button
-              onClick={() => { saveCode(codigoInput); setCodigo(codigoInput); loadCard(codigoInput); }}
-              disabled={!codigoInput || loadingCard}
-              className="w-full py-3 bg-[#8a6d3b] text-white font-bold rounded-xl disabled:opacity-50"
-            >
-              Continuar
-            </button>
-            {cardError && <p className="mt-3 text-sm text-red-600 text-center">{cardError}</p>}
+        {/* Count error */}
+        {countError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm text-center">
+            {countError}
           </div>
         )}
 
-        {step === "scanner" && card && (
-          <div className="bg-white/95 border-8 [border-image:linear-gradient(to_right,#bf953f,#fcf6ba,#b38728)1]">
-            {/* Header */}
-            <div className="px-5 pt-5 pb-4 border-b border-[#f0e4cc]">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="text-lg font-bold text-[#5c4a2e]">Bingo de la boda</h2>
-                  <p className="text-xs text-gray-400 font-mono">{codigo}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-[#d4af37]">{completedCells}/{totalCells}</div>
-                  <div className="text-xs text-gray-400">fotos</div>
-                </div>
-              </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-[#bf953f] to-[#d4af37] transition-all duration-500"
-                  style={{ width: `${totalCells ? (completedCells / totalCells) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-[#f0e4cc]">
-              {(["camara", "carton"] as const).map((t) => (
+        {/* Photo grid preview */}
+        {files.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">{files.length} / {PHOTO_COUNT} fotos</span>
+              {!uploading && (
                 <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                    tab === t
-                      ? "text-[#8a6d3b] border-b-2 border-[#d4af37] -mb-px"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}
+                  onClick={() => {
+                    files.forEach((f) => URL.revokeObjectURL(f.preview));
+                    setFiles([]);
+                    setCountError("");
+                    setUploadError("");
+                  }}
+                  className="text-xs text-[#8a6d3b] underline hover:text-red-500 transition"
                 >
-                  {t === "camara" ? "📷 Cámara" : "🎲 Mi cartón"}
+                  Cambiar selección
                 </button>
-              ))}
+              )}
             </div>
-
-            {/* Tab content */}
-            <div className="p-4">
-              {tab === "camara" && (
-                <>
-                  {scanning && (
-                    <div className="flex items-center justify-center gap-2 py-2 mb-2 text-sm text-[#8a6d3b]">
-                      <div className="w-4 h-4 border-2 border-[#d4af37] border-t-transparent rounded-full animate-spin" />
-                      Verificando...
+            <div className="grid grid-cols-4 gap-2">
+              {files.map((item, i) => (
+                <div key={i} className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.preview} alt="" className="w-full h-full object-cover" />
+                  {item.status === "uploading" && (
+                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin mb-1" />
+                      <span className="text-white text-xs">{item.progress}%</span>
                     </div>
                   )}
-                  <QRScanner onDetected={handleQRDetected} active={scannerActive} />
-                </>
-              )}
-
-              {tab === "carton" && (
-                <>
-                  <ProgressGrid card={card} cols={cols} onCellClick={setLightboxCell} />
-                  <button
-                    onClick={() => { setCodigo(""); setCard(null); setStep("codigo"); setScannerActive(false); }}
-                    className="mt-4 w-full text-xs text-gray-400 hover:text-gray-600 underline"
-                  >
-                    Cambiar código
-                  </button>
-                </>
-              )}
+                  {item.status === "done" && (
+                    <div className="absolute inset-0 bg-green-500/40 flex items-center justify-center">
+                      <span className="text-white text-xl">✓</span>
+                    </div>
+                  )}
+                  {item.status === "error" && (
+                    <div className="absolute inset-0 bg-red-500/60 flex items-center justify-center">
+                      <span className="text-white text-xl">✕</span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}
+
+        {/* Upload error */}
+        {uploadError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-600 text-sm text-center">
+            {uploadError}
+          </div>
+        )}
+
+        {/* Upload button */}
+        {allReady && (
+          <button
+            onClick={handleUpload}
+            disabled={uploading}
+            className="w-full py-3 rounded-xl bg-[#bf953f] text-white font-semibold hover:bg-[#aa771c] transition disabled:opacity-50 text-lg"
+          >
+            {uploading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Subiendo fotos...
+              </span>
+            ) : (
+              `Enviar mis ${PHOTO_COUNT} fotos`
+            )}
+          </button>
+        )}
+
+        {/* Hint when wrong count selected */}
+        {files.length > 0 && files.length !== PHOTO_COUNT && !uploading && (
+          <p className="text-center text-sm text-[#8a6d3b]">
+            Necesitás exactamente {PHOTO_COUNT} fotos ({pending} seleccionadas actualmente)
+          </p>
+        )}
       </div>
-
-      {/* Upload tray */}
-      <UploadTray items={uploads} />
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#3d2c10] text-white text-sm px-5 py-3 rounded-full shadow-xl">
-          {toast}
-        </div>
-      )}
-
-      {/* Image lightbox */}
-      {lightboxCell && (
-        <ImageLightbox
-          cell={lightboxCell}
-          codigo={codigo}
-          deletionLocked={deletionLocked}
-          onClose={() => setLightboxCell(null)}
-          onDeleted={async () => {
-            setLightboxCell(null);
-            const res = await fetch(`/api/bingo/card?codigo=${encodeURIComponent(codigo)}`);
-            if (res.ok) { const d = await res.json(); if (d.card) setCard(d.card); }
-          }}
-        />
-      )}
-
-      {/* Upload modal */}
-      {scannedCell && (
-        <UploadModal
-          cell={scannedCell}
-          replacing={isReplacing}
-          onClose={() => { setScannedCell(null); lastToken.current = ""; }}
-          onConfirm={handleConfirmUpload}
-        />
-      )}
     </div>
   );
 }
 
 export default function BingoPage() {
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense>
       <BingoContent />
     </Suspense>
   );

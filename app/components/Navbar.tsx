@@ -10,7 +10,6 @@ const LINKS = [
   { href: "/invitation", label: "Invitación" },
   { href: "/rsvp", label: "RSVP" },
   //{ href: "/galeria", label: "Galería" },
-  //{ href: "/bingo", label: "Bingo" },
 ];
 
 export default function Navbar() {

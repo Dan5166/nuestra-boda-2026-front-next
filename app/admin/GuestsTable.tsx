@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 
 interface Guest {
   userId: string;
@@ -35,12 +36,42 @@ const ESTADO_COLORS: Record<string, string> = {
   pendiente: "bg-yellow-100 text-yellow-700",
 };
 
+async function generateQRDataUrl(codigo: string): Promise<string> {
+  const url = `https://nuestraboda2026.cl?code=${codigo}`;
+  const qrSize = 300;
+  const padding = 20;
+  const textHeight = 100;
+
+  const qrCanvas = document.createElement("canvas");
+  await QRCode.toCanvas(qrCanvas, url, {
+    width: qrSize,
+    margin: 2,
+    color: { dark: "#1a1a1a", light: "#00000000" },
+  });
+
+  const final = document.createElement("canvas");
+  final.width = qrSize + padding * 2;
+  final.height = qrSize + textHeight + padding * 2;
+
+  const ctx = final.getContext("2d")!;
+  ctx.drawImage(qrCanvas, padding, padding);
+
+  ctx.fillStyle = "#1a1a1a";
+  ctx.font = "bold 72px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(codigo, final.width / 2, qrSize + padding + textHeight - 4);
+
+  return final.toDataURL("image/png");
+}
+
 export default function GuestsTable() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterNombre, setFilterNombre] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
   const [hiddenCols, setHiddenCols] = useState<Set<ColumnKey>>(new Set());
+  const [downloadingQRs, setDownloadingQRs] = useState(false);
+  const [qrProgress, setQrProgress] = useState(0);
 
   useEffect(() => {
     fetch("/api/admin/users")
@@ -48,6 +79,34 @@ export default function GuestsTable() {
       .then((data) => setGuests(data.users ?? []))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleDownloadQRs() {
+    // Group confirmed guests by codigo, one QR per unique codigo
+    const byCode = new Map<string, string[]>();
+    for (const g of guests.filter((g) => g.estado === "confirmado")) {
+      byCode.set(g.codigo, [...(byCode.get(g.codigo) ?? []), g.nombre]);
+    }
+    const entries = [...byCode.entries()];
+    if (entries.length === 0) return;
+
+    setDownloadingQRs(true);
+    setQrProgress(0);
+
+    for (let i = 0; i < entries.length; i++) {
+      const [codigo, nombres] = entries[i];
+      const dataUrl = await generateQRDataUrl(codigo);
+      const safeName = nombres.join(" y ").replace(/[^a-zA-ZÀ-ÿ0-9 _-]/g, "").trim();
+      const link = document.createElement("a");
+      link.download = `QR_${safeName}.png`;
+      link.href = dataUrl;
+      link.click();
+      setQrProgress(i + 1);
+      if (i < entries.length - 1) await new Promise((r) => setTimeout(r, 350));
+    }
+
+    setDownloadingQRs(false);
+    setQrProgress(0);
+  }
 
   const toggleCol = (key: ColumnKey) => {
     setHiddenCols((prev) => {
@@ -69,6 +128,7 @@ export default function GuestsTable() {
   const confirmados = guests.filter((g) => g.estado === "confirmado").length;
   const rechazados = guests.filter((g) => g.estado === "rechazado").length;
   const pendientes = guests.filter((g) => g.estado === "pendiente").length;
+  const confirmedCodigos = [...new Set(guests.filter((g) => g.estado === "confirmado").map((g) => g.codigo))];
 
   const visibleCols = COLUMNS.filter((c) => !hiddenCols.has(c.key));
 
@@ -114,6 +174,21 @@ export default function GuestsTable() {
         <span className="text-sm text-gray-400">
           {filtered.length} invitado{filtered.length !== 1 ? "s" : ""}
         </span>
+
+        <button
+          onClick={handleDownloadQRs}
+          disabled={downloadingQRs || loading || confirmados === 0}
+          className="ml-auto flex items-center gap-2 px-4 py-2 border border-[#d4af37] text-[#8a6d3b] text-sm rounded-lg hover:bg-[#fdf5e8] transition disabled:opacity-50"
+        >
+          {downloadingQRs ? (
+            <>
+              <span className="w-3.5 h-3.5 border border-[#bf953f] border-t-transparent rounded-full animate-spin" />
+              {qrProgress}/{confirmedCodigos.length}
+            </>
+          ) : (
+            <>↓ QRs confirmados ({confirmedCodigos.length})</>
+          )}
+        </button>
       </div>
 
       {/* Toggle columnas */}

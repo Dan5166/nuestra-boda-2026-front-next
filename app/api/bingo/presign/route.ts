@@ -1,42 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPresignedUploadUrl } from '@/lib/s3';
-import { getBingoSettings, getBingoCard } from '@/lib/bingo';
 import { findByCodigo } from '@/lib/users';
+import { getGameState, isCurrentSessionSubmission } from '@/lib/bingo';
 
+const PHOTO_COUNT = 8;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
 export async function POST(req: NextRequest) {
   try {
-    const { codigo, position, fileName, contentType } = await req.json();
+    const { codigo, files } = await req.json() as {
+      codigo: string;
+      files: Array<{ name: string; type: string }>;
+    };
 
-    if (!codigo || position === undefined || !fileName || !contentType) {
+    if (!codigo || !Array.isArray(files)) {
       return NextResponse.json({ message: 'Faltan campos requeridos' }, { status: 400 });
     }
 
-    const [group, settings, card] = await Promise.all([
-      findByCodigo(codigo),
-      getBingoSettings(),
-      getBingoCard(codigo),
-    ]);
+    if (files.length !== PHOTO_COUNT) {
+      return NextResponse.json(
+        { message: `Debés enviar exactamente ${PHOTO_COUNT} fotos. Enviaste ${files.length}.` },
+        { status: 400 }
+      );
+    }
 
-    if (!group) return NextResponse.json({ message: 'Código inválido' }, { status: 403 });
-    if (!settings.enabled) return NextResponse.json({ message: 'El bingo está desactivado' }, { status: 403 });
-    if (!card) return NextResponse.json({ message: 'No tienes cartón de bingo' }, { status: 404 });
+    const invalidType = files.find((f) => !ALLOWED_TYPES.includes(f.type));
+    if (invalidType) {
+      return NextResponse.json({ message: `Tipo de archivo no permitido: ${invalidType.type}` }, { status: 400 });
+    }
 
-    const cell = card.cells.find((c) => c.position === position);
-    if (!cell) return NextResponse.json({ message: 'Posición inválida' }, { status: 400 });
-    if (cell.completedAt) return NextResponse.json({ message: 'Esta casilla ya está completada' }, { status: 409 });
+    const group = await findByCodigo(codigo.toUpperCase().trim());
+    if (!group) {
+      return NextResponse.json({ message: 'Código de invitación inválido' }, { status: 403 });
+    }
 
-    if (!ALLOWED_TYPES.includes(contentType)) {
-      return NextResponse.json({ message: 'Tipo de archivo no permitido' }, { status: 400 });
+    const game = await getGameState();
+    if (game.status !== 'started') {
+      return NextResponse.json({ message: 'El juego no está activo' }, { status: 403 });
+    }
+
+    const alreadySubmitted = await isCurrentSessionSubmission(codigo.toUpperCase().trim(), game.startedAt!);
+    if (alreadySubmitted) {
+      return NextResponse.json({ message: 'Ya enviaste tus fotos para este juego' }, { status: 409 });
     }
 
     const timestamp = Date.now();
-    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const key = `bingo/${codigo}/${position}/${timestamp}-${safeFileName}`;
+    const urls = await Promise.all(
+      files.map(async (f, i) => {
+        const safe = f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const key = `bingo/${codigo.toUpperCase().trim()}/${timestamp}-${i + 1}-${safe}`;
+        const url = await getPresignedUploadUrl(key, f.type, 600);
+        return { url, key };
+      })
+    );
 
-    const url = await getPresignedUploadUrl(key, contentType, 300);
-    return NextResponse.json({ url, key });
+    return NextResponse.json({ urls });
   } catch {
     return NextResponse.json({ message: 'Error interno' }, { status: 500 });
   }

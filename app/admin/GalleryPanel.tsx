@@ -56,7 +56,28 @@ export default function GalleryPanel() {
   const [filterCodigo, setFilterCodigo] = useState("");
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  async function handleDownloadAll() {
+    const keys = filtered.map((f) => f.key);
+    if (keys.length === 0) return;
+    setDownloadingAll(true);
+    setDownloadProgress(0);
+    for (let i = 0; i < keys.length; i++) {
+      const a = document.createElement("a");
+      a.href = `/api/download?key=${encodeURIComponent(keys[i])}`;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setDownloadProgress(i + 1);
+      if (i < keys.length - 1) await new Promise((r) => setTimeout(r, 400));
+    }
+    setDownloadingAll(false);
+    setDownloadProgress(0);
+  }
 
   useEffect(() => {
     Promise.all([
@@ -231,8 +252,8 @@ export default function GalleryPanel() {
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex items-center gap-3">
+      {/* Filter + download all */}
+      <div className="flex items-center gap-3 flex-wrap">
         <input
           type="text"
           placeholder="Filtrar por código o nombre..."
@@ -243,6 +264,20 @@ export default function GalleryPanel() {
         <span className="text-sm text-gray-400">
           {filtered.length} archivo{filtered.length !== 1 ? "s" : ""} · {formatBytes(totalSize)} total
         </span>
+        <button
+          onClick={handleDownloadAll}
+          disabled={downloadingAll || filtered.length === 0}
+          className="ml-auto px-4 py-2 bg-[#bf953f] text-white text-sm rounded-lg hover:bg-[#aa771c] transition disabled:opacity-50 flex items-center gap-2"
+        >
+          {downloadingAll ? (
+            <>
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              {downloadProgress}/{filtered.length}
+            </>
+          ) : (
+            <>↓ Descargar {filterCodigo ? "filtrados" : "todos"} ({filtered.length})</>
+          )}
+        </button>
       </div>
 
       {/* Gallery grid */}

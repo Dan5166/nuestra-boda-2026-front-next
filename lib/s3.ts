@@ -5,6 +5,8 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import https from 'https';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 
 const BUCKET = process.env.AWS_S3_BUCKET!;
 const REGION = process.env.AWS_REGION!;
@@ -15,6 +17,11 @@ export const s3Client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
+  ...(process.env.NODE_ENV !== 'production' && {
+    requestHandler: new NodeHttpHandler({
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+    }),
+  }),
 });
 
 export async function getPresignedUploadUrl(

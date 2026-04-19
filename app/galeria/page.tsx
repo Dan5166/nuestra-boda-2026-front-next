@@ -28,6 +28,7 @@ interface FileItem {
   file: File;
   preview: string;
   status: "pending" | "uploading" | "done" | "error";
+  progress: number; // 0-100
   error?: string;
 }
 
@@ -72,6 +73,8 @@ function GaleriaContent() {
 
   const [queue, setQueue] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   // Codes to tag as involved in this upload batch
   const [involvedCodes, setInvolvedCodes] = useState<string[]>([]);
@@ -137,10 +140,10 @@ function GaleriaContent() {
     const newItems: FileItem[] = [];
     for (const file of Array.from(e.target.files)) {
       if (file.size > maxMB * 1024 * 1024) {
-        newItems.push({ file, preview: "", status: "error", error: `Supera el límite de ${maxMB} MB` });
+        newItems.push({ file, preview: "", status: "error", progress: 0, error: `Supera el límite de ${maxMB} MB` });
         continue;
       }
-      newItems.push({ file, preview: URL.createObjectURL(file), status: "pending" });
+      newItems.push({ file, preview: URL.createObjectURL(file), status: "pending", progress: 0 });
     }
     setQueue((prev) => [...prev, ...newItems]);
     e.target.value = "";
@@ -161,19 +164,25 @@ function GaleriaContent() {
   }
 
   async function uploadAll() {
-    const pending = queue.filter((q) => q.status === "pending");
-    if (!pending.length) return;
+    const hasPending = queue.some((q) => q.status === "pending");
+    if (!hasPending) return;
     setUploading(true);
 
-    for (let i = 0; i < queue.length; i++) {
-      if (queue[i].status !== "pending") continue;
+    // Snapshot indices at the start to avoid stale closure issues
+    const indices = queue.reduce<number[]>((acc, q, i) => {
+      if (q.status === "pending") acc.push(i);
+      return acc;
+    }, []);
 
-      setQueue((prev) => prev.map((q, idx) => (idx === i ? { ...q, status: "uploading" } : q)));
+    for (const i of indices) {
+      const item = queue[i];
+
+      setQueue((prev) =>
+        prev.map((q, idx) => (idx === i ? { ...q, status: "uploading", progress: 0 } : q))
+      );
 
       try {
-        const item = queue[i];
-
-        // 1. Get presigned URL
+        // 1. Presigned URL
         const presignRes = await fetch("/api/gallery/presign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -185,21 +194,37 @@ function GaleriaContent() {
         }
         const { url, key } = await presignRes.json();
 
-        // 2. Upload directly to S3
-        await fetch(url, {
-          method: "PUT",
-          headers: { "Content-Type": item.file.type },
-          body: item.file,
+        // 2. Upload to S3 con XHR para rastrear progreso
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", url);
+          xhr.setRequestHeader("Content-Type", item.file.type);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              setQueue((prev) =>
+                prev.map((q, idx) => (idx === i ? { ...q, progress: pct } : q))
+              );
+            }
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`HTTP ${xhr.status}`));
+          xhr.onerror = () => reject(new Error("Error de red"));
+          xhr.send(item.file);
         });
 
-        // 3. Save metadata (involvedCodes) to DynamoDB
+        // 3. Confirmar metadatos en DynamoDB
         await fetch("/api/gallery/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ codigo, key, involvedCodes, size: item.file.size }),
         });
 
-        setQueue((prev) => prev.map((q, idx) => (idx === i ? { ...q, status: "done" } : q)));
+        setQueue((prev) =>
+          prev.map((q, idx) => (idx === i ? { ...q, status: "done", progress: 100 } : q))
+        );
       } catch (e: unknown) {
         setQueue((prev) =>
           prev.map((q, idx) =>
@@ -217,6 +242,24 @@ function GaleriaContent() {
 
   const ownFiles = allFiles.filter((f) => f.isOwn);
   const involvedFiles = allFiles.filter((f) => !f.isOwn);
+
+  async function downloadAllOwn() {
+    if (ownFiles.length === 0) return;
+    setDownloadingAll(true);
+    setDownloadProgress(0);
+    for (let i = 0; i < ownFiles.length; i++) {
+      const a = document.createElement("a");
+      a.href = `/api/download?key=${encodeURIComponent(ownFiles[i].key)}`;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setDownloadProgress(i + 1);
+      if (i < ownFiles.length - 1) await new Promise((r) => setTimeout(r, 400));
+    }
+    setDownloadingAll(false);
+    setDownloadProgress(0);
+  }
 
   const ownPhotos = ownFiles.filter((f) => !isVideo(f.key)).length;
   const ownVideos = ownFiles.filter((f) => isVideo(f.key)).length;
@@ -332,38 +375,24 @@ function GaleriaContent() {
           )}
         </div>
 
-        {/* Queue */}
+        {/* Queue — grilla de tarjetas con progreso */}
         {queue.length > 0 && (
-          <div className="space-y-2">
-            {queue.map((item, i) => (
-              <div key={i} className="flex items-center gap-3 bg-white rounded-xl p-3 shadow-sm">
-                {item.file.type.startsWith("video/") ? (
-                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl shrink-0">🎬</div>
-                ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.preview} alt="" className="w-12 h-12 object-cover rounded-lg shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{item.file.name}</p>
-                  <p className="text-xs text-gray-400">{formatBytes(item.file.size)}</p>
-                  {item.status === "error" && <p className="text-xs text-red-500">{item.error}</p>}
-                </div>
-                <div className="shrink-0 text-sm">
-                  {item.status === "pending" && (
-                    <button onClick={() => removeFromQueue(i)} className="text-gray-400 hover:text-red-400 text-lg">✕</button>
-                  )}
-                  {item.status === "uploading" && <span className="text-[#bf953f]">Subiendo…</span>}
-                  {item.status === "done" && <span className="text-green-600">✓</span>}
-                  {item.status === "error" && <span className="text-red-500">✕</span>}
-                </div>
-              </div>
-            ))}
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {queue.map((item, i) => (
+                <QueueCard
+                  key={i}
+                  item={item}
+                  onRemove={() => removeFromQueue(i)}
+                />
+              ))}
+            </div>
 
             {queue.some((q) => q.status === "pending") && (
               <button
                 onClick={uploadAll}
                 disabled={uploading}
-                className="w-full py-2 rounded-lg bg-[#bf953f] text-white font-medium hover:bg-[#aa771c] transition disabled:opacity-50 mt-1"
+                className="w-full py-2 rounded-lg bg-[#bf953f] text-white font-medium hover:bg-[#aa771c] transition disabled:opacity-50"
               >
                 {uploading
                   ? "Subiendo…"
@@ -375,7 +404,25 @@ function GaleriaContent() {
 
         {/* Own files */}
         <section>
-          <h2 className="font-serif text-xl mb-4">Mis fotos y videos</h2>
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <h2 className="font-serif text-xl">Mis fotos y videos</h2>
+            {ownFiles.length > 0 && (
+              <button
+                onClick={downloadAllOwn}
+                disabled={downloadingAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-[#d4af37] text-[#8a6d3b] text-xs rounded-lg hover:bg-[#fdf5e8] transition disabled:opacity-50"
+              >
+                {downloadingAll ? (
+                  <>
+                    <span className="w-3 h-3 border border-[#bf953f] border-t-transparent rounded-full animate-spin" />
+                    {downloadProgress}/{ownFiles.length}
+                  </>
+                ) : (
+                  <>↓ Descargar todas ({ownFiles.length})</>
+                )}
+              </button>
+            )}
+          </div>
           <FileGrid
             files={ownFiles}
             loading={loadingFiles}
@@ -483,6 +530,85 @@ function GaleriaContent() {
           >
             ✕
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QueueCard({ item, onRemove }: { item: FileItem; onRemove: () => void }) {
+  const isVid = item.file.type.startsWith("video/");
+
+  return (
+    <div className="rounded-xl overflow-hidden bg-white shadow-sm relative aspect-square">
+      {/* Preview */}
+      {isVid ? (
+        <video
+          src={item.preview}
+          className="w-full h-full object-cover"
+          preload="metadata"
+          muted
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.preview}
+          alt=""
+          className="w-full h-full object-cover"
+        />
+      )}
+
+      {/* Overlay según estado */}
+      {item.status === "pending" && (
+        <div className="absolute inset-0 flex flex-col justify-between p-2">
+          {/* Botón quitar */}
+          <div className="flex justify-end">
+            <button
+              onClick={onRemove}
+              className="w-7 h-7 rounded-full bg-black/60 text-white text-sm flex items-center justify-center hover:bg-black/80 transition"
+              aria-label="Quitar"
+            >
+              ✕
+            </button>
+          </div>
+          {/* Nombre del archivo */}
+          <div className="bg-black/50 rounded-lg px-2 py-1">
+            <p className="text-white text-xs truncate">{item.file.name}</p>
+            <p className="text-white/60 text-xs">{formatBytes(item.file.size)}</p>
+          </div>
+        </div>
+      )}
+
+      {item.status === "uploading" && (
+        <div className="absolute inset-x-0 bottom-0">
+          {/* Barra de progreso */}
+          <div className="bg-black/40 px-3 pt-2 pb-3">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-white text-xs font-medium">Subiendo…</span>
+              <span className="text-white text-xs font-mono">{item.progress}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-linear-to-r from-[#bf953f] via-[#d4af37] to-[#aa771c] rounded-full transition-all duration-200"
+                style={{ width: `${item.progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {item.status === "done" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <div className="w-10 h-10 rounded-full bg-green-500/90 flex items-center justify-center shadow-lg">
+            <span className="text-white text-xl leading-none">✓</span>
+          </div>
+        </div>
+      )}
+
+      {item.status === "error" && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 px-3 text-center">
+          <span className="text-red-400 text-2xl mb-1">✕</span>
+          <p className="text-white text-xs leading-snug">{item.error}</p>
         </div>
       )}
     </div>

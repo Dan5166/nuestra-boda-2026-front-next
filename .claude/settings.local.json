@@ -7,7 +7,8 @@
       "Bash(npm install:*)",
       "Bash(wc:*)",
       "Bash(aws:*)",
-      "Bash(where aws:*)"
+      "Bash(where aws:*)",
+      "Bash(grep -v \"^\\\\\\\\.next\")"
     ]
   }
 }
