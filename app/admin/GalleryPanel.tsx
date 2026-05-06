@@ -21,6 +21,16 @@ interface Settings {
   deletionLocked: boolean;
 }
 
+interface PublicSettings {
+  enabled: boolean;
+  maxFileSizeMBPhoto: number;
+  maxFileSizeMBVideo: number;
+  maxPhotosPerSession: number;
+  maxVideosPerSession: number;
+  maxPhotosTotal: number;
+  maxVideosTotal: number;
+}
+
 interface LightboxItem {
   key: string;
   url: string;
@@ -53,6 +63,17 @@ export default function GalleryPanel() {
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [publicSettings, setPublicSettings] = useState<PublicSettings>({
+    enabled: true,
+    maxFileSizeMBPhoto: 15,
+    maxFileSizeMBVideo: 150,
+    maxPhotosPerSession: 10,
+    maxVideosPerSession: 2,
+    maxPhotosTotal: 300,
+    maxVideosTotal: 60,
+  });
+  const [savingPublic, setSavingPublic] = useState(false);
+  const [publicSaved, setPublicSaved] = useState(false);
   const [filterCodigo, setFilterCodigo] = useState("");
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -83,9 +104,11 @@ export default function GalleryPanel() {
     Promise.all([
       fetch("/api/admin/gallery").then((r) => r.json()),
       fetch("/api/admin/gallery/settings").then((r) => r.json()),
-    ]).then(([galleryData, settingsData]) => {
+      fetch("/api/admin/public-upload/settings").then((r) => r.json()),
+    ]).then(([galleryData, settingsData, publicData]) => {
       setFiles(galleryData.files ?? []);
       if (settingsData && !settingsData.message) setSettings(settingsData);
+      if (publicData && !publicData.message) setPublicSettings(publicData);
       setLoading(false);
     });
   }, []);
@@ -118,6 +141,21 @@ export default function GalleryPanel() {
       involvedNames: file.involvedNames,
       involvedCodes: file.involvedCodes,
     });
+  }
+
+  async function handleSavePublicSettings() {
+    setSavingPublic(true);
+    setPublicSaved(false);
+    try {
+      const res = await fetch("/api/admin/public-upload/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(publicSettings),
+      });
+      if (res.ok) setPublicSaved(true);
+    } finally {
+      setSavingPublic(false);
+    }
   }
 
   async function handleSaveSettings() {
@@ -229,6 +267,123 @@ export default function GalleryPanel() {
           {settingsSaved && (
             <span className="text-green-600 text-sm">Guardado</span>
           )}
+        </div>
+      </div>
+
+      {/* Public Upload Settings */}
+      <div className="bg-white rounded-xl shadow p-6">
+        <div className="flex items-baseline gap-3 mb-1">
+          <h3 className="font-serif text-lg">Subida pública</h3>
+          <code className="text-xs text-[#8a6d3b] bg-[#fdf6ee] px-2 py-0.5 rounded">/subir</code>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          Link sin código de invitación. Los archivos se guardan bajo <code>uploads/publico/</code> en S3.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <label className="flex flex-col gap-1 text-sm">
+            Tamaño máx. foto (MB)
+            <input
+              type="number"
+              min={1}
+              value={publicSettings.maxFileSizeMBPhoto}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxFileSizeMBPhoto: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Tamaño máx. video (MB)
+            <input
+              type="number"
+              min={1}
+              value={publicSettings.maxFileSizeMBVideo}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxFileSizeMBVideo: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Estado
+            <select
+              value={publicSettings.enabled ? "on" : "off"}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, enabled: e.target.value === "on" }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            >
+              <option value="on">Activada</option>
+              <option value="off">Desactivada</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Fotos por sesión
+            <input
+              type="number"
+              min={0}
+              value={publicSettings.maxPhotosPerSession}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxPhotosPerSession: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Videos por sesión
+            <input
+              type="number"
+              min={0}
+              value={publicSettings.maxVideosPerSession}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxVideosPerSession: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+          <div className="flex flex-col gap-1 text-sm text-gray-400">
+            <span>Sesión = una visita al link</span>
+            <span className="text-xs">(control soft, sin auth)</span>
+          </div>
+          <label className="flex flex-col gap-1 text-sm">
+            Total fotos (hard limit)
+            <input
+              type="number"
+              min={0}
+              value={publicSettings.maxPhotosTotal}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxPhotosTotal: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Total videos (hard limit)
+            <input
+              type="number"
+              min={0}
+              value={publicSettings.maxVideosTotal}
+              onChange={(e) =>
+                setPublicSettings((s) => ({ ...s, maxVideosTotal: Number(e.target.value) }))
+              }
+              className="border border-gray-300 rounded px-3 py-2"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={handleSavePublicSettings}
+            disabled={savingPublic}
+            className="px-4 py-2 bg-[#bf953f] text-white text-sm rounded hover:bg-[#aa771c] transition disabled:opacity-50"
+          >
+            {savingPublic ? "Guardando…" : "Guardar"}
+          </button>
+          {publicSaved && <span className="text-green-600 text-sm">Guardado</span>}
+          <span className="ml-auto text-xs text-gray-400">
+            Defaults: 15 MB foto · 150 MB video · 300 fotos · 60 videos totales
+          </span>
         </div>
       </div>
 

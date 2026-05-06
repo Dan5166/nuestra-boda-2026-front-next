@@ -35,9 +35,12 @@ export async function GET(_req: NextRequest) {
 
     const enriched = files.map((f) => {
       const meta = metaByKey.get(f.key);
+      const names = f.codigo === 'publico'
+        ? (meta?.uploaderName ? [meta.uploaderName] : [])
+        : (namesByCodigo[f.codigo] ?? []);
       return {
         ...f,
-        names: namesByCodigo[f.codigo] ?? [],
+        names,
         involvedCodes: meta?.involvedCodes ?? [],
         involvedNames: (meta?.involvedCodes ?? []).flatMap(
           (c) => namesByCodigo[c] ?? []
