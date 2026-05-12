@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAllMedia, getGallerySettings } from '@/lib/gallery';
 import { getAllUsers } from '@/lib/users';
-
-const BUCKET = process.env.AWS_S3_BUCKET!;
-const REGION = process.env.AWS_REGION!;
-
-function s3Url(key: string) {
-  return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
-}
+import { listAllUploads } from '@/lib/s3';
 
 export async function GET() {
-  const [allMedia, settings, users] = await Promise.all([
+  const [s3Files, allMedia, settings, users] = await Promise.all([
+    listAllUploads(),
     getAllMedia(),
     getGallerySettings(),
     getAllUsers(),
@@ -26,21 +21,24 @@ export async function GET() {
     namesByCodigo[user.codigo].push(user.nombre);
   }
 
-  const files = allMedia
-    .sort((a, b) => (b.uploadedAt > a.uploadedAt ? 1 : -1))
-    .map((m) => {
+  const metaByKey = new Map(allMedia.map((m) => [m.s3Key, m]));
+
+  const files = s3Files
+    .sort((a, b) => (b.lastModified ?? '') > (a.lastModified ?? '') ? 1 : -1)
+    .map((f) => {
+      const meta = metaByKey.get(f.key);
       let uploaderLabel: string;
-      if (m.uploadedBy === 'publico') {
-        uploaderLabel = m.uploaderName ?? 'Invitado';
+      if (f.codigo === 'publico') {
+        uploaderLabel = meta?.uploaderName ?? 'Invitado';
       } else {
-        const names = namesByCodigo[m.uploadedBy];
-        uploaderLabel = names?.join(' & ') ?? m.uploadedBy;
+        const names = namesByCodigo[f.codigo];
+        uploaderLabel = names?.join(' & ') ?? f.codigo;
       }
       return {
-        key: m.s3Key,
-        url: s3Url(m.s3Key),
-        size: m.size,
-        uploadedAt: m.uploadedAt,
+        key: f.key,
+        url: f.url,
+        size: f.size,
+        uploadedAt: f.lastModified,
         uploaderLabel,
       };
     });
