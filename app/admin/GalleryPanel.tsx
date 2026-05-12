@@ -75,6 +75,7 @@ export default function GalleryPanel() {
   const [savingPublic, setSavingPublic] = useState(false);
   const [publicSaved, setPublicSaved] = useState(false);
   const [filterCodigo, setFilterCodigo] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "photo" | "video">("all");
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -122,12 +123,15 @@ export default function GalleryPanel() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const filtered = files.filter(
-    (f) =>
-      !filterCodigo ||
+  const filtered = files.filter((f) => {
+    if (filterType === "photo" && isVideo(f.key)) return false;
+    if (filterType === "video" && !isVideo(f.key)) return false;
+    if (!filterCodigo) return true;
+    return (
       f.codigo.toLowerCase().includes(filterCodigo.toLowerCase()) ||
       f.names.some((n) => n.toLowerCase().includes(filterCodigo.toLowerCase()))
-  );
+    );
+  });
 
   const totalSize = files.reduce((acc, f) => acc + f.size, 0);
 
@@ -416,6 +420,21 @@ export default function GalleryPanel() {
           value={filterCodigo}
           onChange={(e) => setFilterCodigo(e.target.value)}
         />
+        <div className="flex rounded overflow-hidden border border-gray-300 text-sm">
+          {(["all", "photo", "video"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setFilterType(t)}
+              className={`px-3 py-1.5 transition ${
+                filterType === t
+                  ? "bg-[#bf953f] text-white"
+                  : "bg-white text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              {t === "all" ? "Todo" : t === "photo" ? "Fotos" : "Videos"}
+            </button>
+          ))}
+        </div>
         <span className="text-sm text-gray-400">
           {filtered.length} archivo{filtered.length !== 1 ? "s" : ""} · {formatBytes(totalSize)} total
         </span>
@@ -430,7 +449,7 @@ export default function GalleryPanel() {
               {downloadProgress}/{filtered.length}
             </>
           ) : (
-            <>↓ Descargar {filterCodigo ? "filtrados" : "todos"} ({filtered.length})</>
+            <>↓ Descargar {filterCodigo || filterType !== "all" ? "filtrados" : "todos"} ({filtered.length})</>
           )}
         </button>
       </div>
@@ -455,10 +474,11 @@ export default function GalleryPanel() {
                 {isVideo(file.key) ? (
                   <>
                     <video
-                      src={file.url}
+                      src={`${file.url}#t=0.001`}
                       className="w-full h-full object-cover"
                       preload="metadata"
                       muted
+                      playsInline
                     />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
@@ -478,7 +498,11 @@ export default function GalleryPanel() {
               <div className="px-2.5 py-2 flex flex-col gap-1">
                 {/* Uploader */}
                 <div className="flex items-baseline gap-1.5 min-w-0">
-                  <span className="font-mono text-xs text-gray-400 shrink-0">{file.codigo}</span>
+                  {file.codigo === "publico" ? (
+                    <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded shrink-0">Público</span>
+                  ) : (
+                    <span className="font-mono text-xs text-gray-400 shrink-0">{file.codigo}</span>
+                  )}
                   {file.names.length > 0 && (
                     <span className="text-xs text-[#5c4a2e] truncate">{file.names.join(", ")}</span>
                   )}
@@ -526,6 +550,7 @@ export default function GalleryPanel() {
                 className="w-full max-h-[80vh] rounded-xl"
                 controls
                 autoPlay
+                playsInline
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element

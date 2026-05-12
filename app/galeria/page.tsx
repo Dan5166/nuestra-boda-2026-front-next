@@ -83,10 +83,11 @@ export default function GaleriaPage() {
                 {isVideo(file.key) ? (
                   <>
                     <video
-                      src={file.url}
+                      src={`${file.url}#t=0.001`}
                       className="w-full h-full object-cover"
                       preload="metadata"
                       muted
+                      playsInline
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
@@ -126,6 +127,7 @@ export default function GaleriaPage() {
                 className="w-full max-h-[78vh] rounded-xl"
                 controls
                 autoPlay
+                playsInline
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
