@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       involvedCodes: [],
       uploadedAt: new Date().toISOString(),
       size: typeof size === 'number' ? size : 0,
+      showInGallery: false,
       ...(safeName ? { uploaderName: safeName } : {}),
     });
 

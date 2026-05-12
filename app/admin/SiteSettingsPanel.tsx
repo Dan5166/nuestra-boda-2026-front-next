@@ -6,6 +6,7 @@ type HomePage = "landing" | "menu";
 
 export default function SiteSettingsPanel() {
   const [homePage, setHomePage] = useState<HomePage>("landing");
+  const [showPostboda, setShowPostboda] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -15,6 +16,7 @@ export default function SiteSettingsPanel() {
       .then((r) => r.json())
       .then((data) => {
         if (data.homePage) setHomePage(data.homePage);
+        setShowPostboda(data.showPostboda === true);
         setLoading(false);
       });
   }, []);
@@ -26,7 +28,7 @@ export default function SiteSettingsPanel() {
       const res = await fetch("/api/admin/site-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ homePage }),
+        body: JSON.stringify({ homePage, showPostboda }),
       });
       if (res.ok) setSaved(true);
     } finally {
@@ -96,6 +98,47 @@ export default function SiteSettingsPanel() {
               </div>
             </label>
           ))}
+        </div>
+
+        {/* Post-boda toggle */}
+        <div className="mt-6 pt-6 border-t border-[#e8d9c0]">
+          <h4 className="font-medium text-[#5c4a2e] mb-1">Menú Post-boda</h4>
+          <p className="text-sm text-gray-500 mb-3">
+            Activa esta sección después de la boda para que los invitados puedan
+            subir fotos y ver la galería.
+          </p>
+          <label className="flex items-center gap-3 cursor-pointer w-fit">
+            <div
+              onClick={() => setShowPostboda((v) => !v)}
+              className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                showPostboda ? "bg-[#bf953f]" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                  showPostboda ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </div>
+            <span className="text-sm text-[#5c4a2e]">
+              {showPostboda ? "Visible en el menú" : "Oculto"}
+            </span>
+          </label>
+          {showPostboda && (
+            <div className="mt-3 flex gap-3 text-xs text-[#8a6d3b]">
+              <a href="/postboda" target="_blank" rel="noopener noreferrer" className="hover:underline text-[#bf953f]">
+                Vista previa /postboda →
+              </a>
+              <span>·</span>
+              <a href="/subir" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                /subir
+              </a>
+              <span>·</span>
+              <a href="/galeria" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                /galeria
+              </a>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center gap-3">

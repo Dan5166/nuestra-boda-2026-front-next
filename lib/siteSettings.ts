@@ -8,10 +8,12 @@ const SK = 'SITE';
 
 export interface SiteSettings {
   homePage: 'landing' | 'menu';
+  showPostboda: boolean;
 }
 
 const DEFAULT_SETTINGS: SiteSettings = {
   homePage: 'landing',
+  showPostboda: false,
 };
 
 export async function getSiteSettings(): Promise<SiteSettings> {
@@ -25,6 +27,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
     if (!result.Item) return DEFAULT_SETTINGS;
     return {
       homePage: result.Item.homePage ?? DEFAULT_SETTINGS.homePage,
+      showPostboda: result.Item.showPostboda ?? DEFAULT_SETTINGS.showPostboda,
     };
   } catch {
     return DEFAULT_SETTINGS;

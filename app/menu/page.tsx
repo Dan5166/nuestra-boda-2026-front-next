@@ -20,6 +20,7 @@ interface MenuCard {
 function MenuContent() {
   const [codigo, setCodigo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPostboda, setShowPostboda] = useState(false);
   const searchParams = useSearchParams();
   const codeFromUrl = searchParams.get("code")?.toUpperCase() || "";
 
@@ -44,6 +45,10 @@ function MenuContent() {
   useEffect(() => {
     const code = codeFromUrl || getSavedCode();
     if (code) buscarCodigo(code);
+    fetch("/api/site-settings")
+      .then((r) => r.json())
+      .then((d) => setShowPostboda(d.showPostboda === true))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -78,6 +83,16 @@ function MenuContent() {
         withCode("/rsvp") +
         (codigo ? "&seccion=regalos" : "?seccion=regalos"),
     },
+    ...(showPostboda
+      ? [
+          {
+            emoji: "🎊",
+            title: "Post-boda",
+            description: "Sube tus fotos y ve la galería del día",
+            href: "/postboda",
+          },
+        ]
+      : []),
   ];
 
   if (loading) return <Loader />;

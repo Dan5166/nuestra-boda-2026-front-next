@@ -1,4 +1,4 @@
-import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DeleteCommand, GetCommand, PutCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { dynamoClient } from './dynamodb';
 
 const TABLE_NAME = 'GallerySettings';
@@ -63,6 +63,7 @@ export interface MediaMetadata {
   uploadedAt: string;
   size: number;
   uploaderName?: string;    // optional display name for public uploads
+  showInGallery?: boolean;  // undefined = true (visible by default)
 }
 
 export async function saveMediaMetadata(meta: MediaMetadata) {
@@ -86,6 +87,38 @@ export async function getMediaForCode(codigo: string): Promise<MediaMetadata[]> 
 export async function getAllMedia(): Promise<MediaMetadata[]> {
   const result = await dynamoClient.send(new ScanCommand({ TableName: MEDIA_TABLE }));
   return (result.Items ?? []) as MediaMetadata[];
+}
+
+// ── Gallery order ────────────────────────────────────────────────────────────
+
+const ORDER_SK = 'GALLERY_ORDER';
+
+export async function getGalleryOrder(): Promise<string[]> {
+  try {
+    const result = await dynamoClient.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: { PK, SK: ORDER_SK } })
+    );
+    return (result.Item?.order as string[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveGalleryOrder(order: string[]) {
+  await dynamoClient.send(
+    new PutCommand({ TableName: TABLE_NAME, Item: { PK, SK: ORDER_SK, order } })
+  );
+}
+
+export async function updateMediaVisibility(s3Key: string, showInGallery: boolean) {
+  await dynamoClient.send(
+    new UpdateCommand({
+      TableName: MEDIA_TABLE,
+      Key: { s3Key },
+      UpdateExpression: 'SET showInGallery = :v',
+      ExpressionAttributeValues: { ':v': showInGallery },
+    })
+  );
 }
 
 export async function deleteMediaMetadata(s3Key: string) {

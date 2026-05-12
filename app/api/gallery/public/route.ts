@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getAllMedia, getGallerySettings } from '@/lib/gallery';
+import { getAllMedia, getGallerySettings, getGalleryOrder } from '@/lib/gallery';
 import { getAllUsers } from '@/lib/users';
 import { listAllUploads } from '@/lib/s3';
 
 export async function GET() {
-  const [s3Files, allMedia, settings, users] = await Promise.all([
+  const [s3Files, allMedia, settings, users, order] = await Promise.all([
     listAllUploads(),
     getAllMedia(),
     getGallerySettings(),
     getAllUsers(),
+    getGalleryOrder(),
   ]);
 
   if (!settings.enabled) {
@@ -23,8 +24,19 @@ export async function GET() {
 
   const metaByKey = new Map(allMedia.map((m) => [m.s3Key, m]));
 
+  const orderMap = new Map(order.map((k, i) => [k, i]));
+
   const files = s3Files
-    .sort((a, b) => (b.lastModified ?? '') > (a.lastModified ?? '') ? 1 : -1)
+    .filter((f) => {
+      const meta = metaByKey.get(f.key);
+      return meta === undefined || meta.showInGallery !== false;
+    })
+    .sort((a, b) => {
+      const ia = orderMap.get(a.key) ?? Infinity;
+      const ib = orderMap.get(b.key) ?? Infinity;
+      if (ia === ib) return (b.lastModified ?? '') > (a.lastModified ?? '') ? 1 : -1;
+      return ia - ib;
+    })
     .map((f) => {
       const meta = metaByKey.get(f.key);
       let uploaderLabel: string;

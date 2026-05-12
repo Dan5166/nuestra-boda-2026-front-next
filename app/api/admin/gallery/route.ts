@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { verifyJwt, COOKIE_NAME } from '@/lib/auth';
 import { listAllUploads, deleteUpload } from '@/lib/s3';
 import { getAllUsers } from '@/lib/users';
-import { getAllMedia, deleteMediaMetadata } from '@/lib/gallery';
+import { getAllMedia, deleteMediaMetadata, updateMediaVisibility, getGalleryOrder } from '@/lib/gallery';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -17,10 +17,11 @@ export async function GET(_req: NextRequest) {
   }
 
   try {
-    const [files, users, mediaRecords] = await Promise.all([
+    const [files, users, mediaRecords, order] = await Promise.all([
       listAllUploads(),
       getAllUsers(),
       getAllMedia(),
+      getGalleryOrder(),
     ]);
 
     // codigo -> names
@@ -45,7 +46,16 @@ export async function GET(_req: NextRequest) {
         involvedNames: (meta?.involvedCodes ?? []).flatMap(
           (c) => namesByCodigo[c] ?? []
         ),
+        showInGallery: meta?.showInGallery !== false,
       };
+    });
+
+    const orderMap = new Map(order.map((k, i) => [k, i]));
+    enriched.sort((a, b) => {
+      const ia = orderMap.get(a.key) ?? Infinity;
+      const ib = orderMap.get(b.key) ?? Infinity;
+      if (ia === ib) return (b.lastModified ?? '') > (a.lastModified ?? '') ? 1 : -1;
+      return ia - ib;
     });
 
     return NextResponse.json({ files: enriched });
@@ -64,6 +74,23 @@ export async function DELETE(req: NextRequest) {
     if (!key) return NextResponse.json({ message: 'Falta la clave' }, { status: 400 });
 
     await Promise.all([deleteUpload(key), deleteMediaMetadata(key)]);
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ message: 'Error interno' }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
+  }
+
+  try {
+    const { key, showInGallery } = await req.json();
+    if (!key || typeof showInGallery !== 'boolean') {
+      return NextResponse.json({ message: 'Parámetros inválidos' }, { status: 400 });
+    }
+    await updateMediaVisibility(key, showInGallery);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ message: 'Error interno' }, { status: 500 });

@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
       involvedCodes: sanitizedCodes,
       uploadedAt: new Date().toISOString(),
       size: typeof size === 'number' ? size : 0,
+      showInGallery: false,
     });
 
     return NextResponse.json({ ok: true });

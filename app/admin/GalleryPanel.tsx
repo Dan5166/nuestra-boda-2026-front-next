@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 
 interface UploadedFile {
   key: string;
@@ -11,6 +12,7 @@ interface UploadedFile {
   names: string[];
   involvedCodes: string[];
   involvedNames: string[];
+  showInGallery: boolean;
 }
 
 interface Settings {
@@ -78,6 +80,10 @@ export default function GalleryPanel() {
   const [filterType, setFilterType] = useState<"all" | "photo" | "video">("all");
   const [lightbox, setLightbox] = useState<LightboxItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -174,6 +180,67 @@ export default function GalleryPanel() {
       if (res.ok) setSettingsSaved(true);
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  function handleDragStart(e: React.DragEvent, key: string) {
+    setDraggingKey(key);
+    e.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleDragOver(e: React.DragEvent, key: string) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (key !== draggingKey) setDragOverKey(key);
+  }
+
+  function handleDrop(e: React.DragEvent, targetKey: string) {
+    e.preventDefault();
+    if (!draggingKey || draggingKey === targetKey) {
+      clearDrag();
+      return;
+    }
+    const dragged = files.find((f) => f.key === draggingKey);
+    if (!dragged) { clearDrag(); return; }
+    const next = files.filter((f) => f.key !== draggingKey);
+    const targetIdx = next.findIndex((f) => f.key === targetKey);
+    next.splice(targetIdx, 0, dragged);
+    setFiles(next);
+    clearDrag();
+    persistOrder(next.map((f) => f.key));
+  }
+
+  function clearDrag() {
+    setDraggingKey(null);
+    setDragOverKey(null);
+  }
+
+  async function persistOrder(keys: string[]) {
+    setSavingOrder(true);
+    try {
+      await fetch("/api/admin/gallery/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: keys }),
+      });
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  async function handleToggleVisibility(key: string, current: boolean) {
+    setToggling(key);
+    try {
+      await fetch("/api/admin/gallery", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, showInGallery: !current }),
+      });
+      setFiles((prev) =>
+        prev.map((f) => (f.key === key ? { ...f, showInGallery: !current } : f))
+      );
+    } finally {
+      setToggling(null);
     }
   }
 
@@ -438,6 +505,12 @@ export default function GalleryPanel() {
         <span className="text-sm text-gray-400">
           {filtered.length} archivo{filtered.length !== 1 ? "s" : ""} · {formatBytes(totalSize)} total
         </span>
+        {savingOrder && (
+          <span className="text-xs text-[#bf953f] flex items-center gap-1">
+            <span className="w-3 h-3 border border-[#bf953f] border-t-transparent rounded-full animate-spin" />
+            Guardando orden…
+          </span>
+        )}
         <button
           onClick={handleDownloadAll}
           disabled={downloadingAll || filtered.length === 0}
@@ -464,11 +537,29 @@ export default function GalleryPanel() {
           {filtered.map((file) => (
             <div
               key={file.key}
-              className="rounded-xl overflow-hidden bg-white shadow-sm flex flex-col"
+              draggable
+              onDragStart={(e) => handleDragStart(e, file.key)}
+              onDragOver={(e) => handleDragOver(e, file.key)}
+              onDrop={(e) => handleDrop(e, file.key)}
+              onDragEnd={clearDrag}
+              className={`rounded-xl overflow-hidden bg-white shadow-sm flex flex-col transition-all duration-150 group ${
+                draggingKey === file.key ? "opacity-30 scale-95" : ""
+              } ${dragOverKey === file.key ? "ring-2 ring-[#bf953f] ring-offset-1" : ""}`}
             >
+              {/* Drag handle */}
+              <div className="flex justify-center items-center h-5 cursor-grab active:cursor-grabbing bg-gray-50 opacity-0 group-hover:opacity-100 transition-opacity select-none">
+                <svg width="20" height="8" viewBox="0 0 20 8" fill="none" className="text-gray-400">
+                  <circle cx="4" cy="2" r="1.5" fill="currentColor"/>
+                  <circle cx="10" cy="2" r="1.5" fill="currentColor"/>
+                  <circle cx="16" cy="2" r="1.5" fill="currentColor"/>
+                  <circle cx="4" cy="6" r="1.5" fill="currentColor"/>
+                  <circle cx="10" cy="6" r="1.5" fill="currentColor"/>
+                  <circle cx="16" cy="6" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
               {/* Image / video — clickable to open lightbox */}
               <div
-                className="relative aspect-square bg-gray-100 cursor-pointer group overflow-hidden"
+                className="relative aspect-square bg-gray-100 cursor-pointer overflow-hidden"
                 onClick={() => openLightbox(file)}
               >
                 {isVideo(file.key) ? (
@@ -479,18 +570,30 @@ export default function GalleryPanel() {
                       preload="metadata"
                       muted
                       playsInline
+                      draggable={false}
                     />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="bg-black/50 rounded-full p-2 text-white text-xl">▶</div>
                     </div>
                   </>
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={file.url}
                     alt=""
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    fill
+                    quality={60}
+                    draggable={false}
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    className={`object-cover transition-transform duration-200 ${
+                      !file.showInGallery ? "opacity-40 grayscale" : ""
+                    }`}
                   />
+                )}
+                {/* Gallery visibility badge */}
+                {!file.showInGallery && (
+                  <div className="absolute top-1.5 left-1.5 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full pointer-events-none">
+                    Oculta
+                  </div>
                 )}
               </div>
 
@@ -518,14 +621,31 @@ export default function GalleryPanel() {
                   </div>
                 )}
 
-                {/* Delete */}
-                <button
-                  onClick={() => handleDelete(file.key)}
-                  disabled={deleting === file.key}
-                  className="text-xs text-red-400 hover:text-red-600 transition text-left mt-0.5 disabled:opacity-40"
-                >
-                  {deleting === file.key ? "Eliminando…" : "Eliminar"}
-                </button>
+                {/* Actions */}
+                <div className="flex items-center gap-3 mt-0.5">
+                  <button
+                    onClick={() => handleToggleVisibility(file.key, file.showInGallery)}
+                    disabled={toggling === file.key}
+                    className={`text-xs transition disabled:opacity-40 ${
+                      file.showInGallery
+                        ? "text-green-600 hover:text-gray-400"
+                        : "text-gray-400 hover:text-green-600"
+                    }`}
+                  >
+                    {toggling === file.key
+                      ? "…"
+                      : file.showInGallery
+                      ? "✓ En galería"
+                      : "Agregar a galería"}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(file.key)}
+                    disabled={deleting === file.key}
+                    className="text-xs text-red-400 hover:text-red-600 transition ml-auto disabled:opacity-40"
+                  >
+                    {deleting === file.key ? "Eliminando…" : "Eliminar"}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
