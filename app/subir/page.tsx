@@ -16,6 +16,7 @@ interface FileItem {
   status: "pending" | "uploading" | "done" | "error";
   progress: number;
   error?: string;
+  preview?: string;
 }
 
 const ALLOWED_PHOTO_TYPES = [
@@ -51,6 +52,13 @@ export default function SubirPage() {
   const [sessionVideos, setSessionVideos] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   useEffect(() => {
     fetch("/api/public-upload/settings")
@@ -71,16 +79,10 @@ export default function SubirPage() {
     const toAdd: FileItem[] = [];
 
     for (const file of files) {
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        toAdd.push({
-          id: uid(),
-          file,
-          status: "error",
-          progress: 0,
-          error: "Tipo de archivo no permitido",
-        });
-        continue;
-      }
+      if (!ALLOWED_TYPES.includes(file.type)) continue;
+
+      const preview = URL.createObjectURL(file);
+      previewUrlsRef.current.add(preview);
 
       const isVideo = isVideoFile(file);
       const maxMB = isVideo
@@ -91,6 +93,7 @@ export default function SubirPage() {
         toAdd.push({
           id: uid(),
           file,
+          preview,
           status: "error",
           progress: 0,
           error: `Tamaño excede ${maxMB} MB`,
@@ -105,6 +108,7 @@ export default function SubirPage() {
         toAdd.push({
           id: uid(),
           file,
+          preview,
           status: "error",
           progress: 0,
           error: `Límite de sesión: ${settings.maxPhotosPerSession} fotos`,
@@ -115,6 +119,7 @@ export default function SubirPage() {
         toAdd.push({
           id: uid(),
           file,
+          preview,
           status: "error",
           progress: 0,
           error: `Límite de sesión: ${settings.maxVideosPerSession} videos`,
@@ -122,7 +127,7 @@ export default function SubirPage() {
         continue;
       }
 
-      toAdd.push({ id: uid(), file, status: "pending", progress: 0 });
+      toAdd.push({ id: uid(), file, preview, status: "pending", progress: 0 });
     }
 
     setQueue((prev) => [...prev, ...toAdd]);
@@ -232,7 +237,14 @@ export default function SubirPage() {
   }
 
   function removeItem(id: string) {
-    setQueue((prev) => prev.filter((f) => f.id !== id));
+    setQueue((prev) => {
+      const item = prev.find((f) => f.id === id);
+      if (item?.preview) {
+        URL.revokeObjectURL(item.preview);
+        previewUrlsRef.current.delete(item.preview);
+      }
+      return prev.filter((f) => f.id !== id);
+    });
   }
 
   const doneCount = queue.filter((f) => f.status === "done").length;
@@ -351,9 +363,29 @@ export default function SubirPage() {
                 key={item.id}
                 className="bg-white rounded-xl shadow-sm p-3 flex items-center gap-3"
               >
-                {/* Icon */}
-                <div className="text-xl shrink-0 select-none">
-                  {isVideoFile(item.file) ? "🎬" : "🖼️"}
+                {/* Preview thumbnail */}
+                <div className="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-[#f0e6d3] flex items-center justify-center">
+                  {item.preview ? (
+                    isVideoFile(item.file) ? (
+                      <video
+                        src={item.preview}
+                        className="w-full h-full object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <img
+                        src={item.preview}
+                        alt={item.file.name}
+                        className="w-full h-full object-cover"
+                      />
+                    )
+                  ) : (
+                    <span className="text-xl select-none">
+                      {isVideoFile(item.file) ? "🎬" : "🖼️"}
+                    </span>
+                  )}
                 </div>
 
                 {/* Info + progress */}
@@ -437,6 +469,12 @@ export default function SubirPage() {
             </p>
             <button
               onClick={() => {
+                queue.forEach((item) => {
+                  if (item.preview) {
+                    URL.revokeObjectURL(item.preview);
+                    previewUrlsRef.current.delete(item.preview);
+                  }
+                });
                 setQueue([]);
               }}
               className="mt-2 text-xs text-[#bf953f] underline underline-offset-2"
