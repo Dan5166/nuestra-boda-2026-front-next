@@ -51,17 +51,19 @@ export default function Navbar() {
         <span className="font-semibold tracking-wide text-[#d4af37]">D & D</span>
 
         {/* Desktop links */}
-        <div className="hidden md:flex gap-6 text-sm items-center">
-          {LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={withCode(l.href)}
-              className={`${baseClasses} ${isActive(l.href) ? activeClasses : inactiveClasses}`}
-            >
-              {l.label}
-            </Link>
-          ))}
-        </div>
+        {pathname !== "/" && (
+          <div className="hidden md:flex gap-6 text-sm items-center">
+            {LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={withCode(l.href)}
+                className={`${baseClasses} ${isActive(l.href) ? activeClasses : inactiveClasses}`}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Desktop: code pill + hamburger toggle */}
         <div className="flex items-center gap-3">
@@ -75,23 +77,25 @@ export default function Navbar() {
             </button>
           )}
 
-          {/* Hamburger — mobile only */}
-          <button
-            className="md:hidden flex flex-col justify-center gap-1.5 w-8 h-8"
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Menú"
-          >
-            <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "rotate-45 translate-y-2" : ""}`} />
-            <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "opacity-0" : ""}`} />
-            <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "-rotate-45 -translate-y-2" : ""}`} />
-          </button>
+          {/* Hamburger — mobile only, hidden on home when there's nothing to show */}
+          {(pathname !== "/" || !!code) && (
+            <button
+              className="md:hidden flex flex-col justify-center gap-1.5 w-8 h-8"
+              onClick={() => setOpen((o) => !o)}
+              aria-label="Menú"
+            >
+              <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "rotate-45 translate-y-2" : ""}`} />
+              <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "opacity-0" : ""}`} />
+              <span className={`block h-0.5 bg-[#8a6d3b] transition-all duration-200 ${open ? "-rotate-45 -translate-y-2" : ""}`} />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Mobile dropdown */}
       {open && (
         <div className="md:hidden bg-white/95 border-t border-gray-100 px-4 py-4 flex flex-col gap-4 text-sm">
-          {LINKS.map((l) => (
+          {pathname !== "/" && LINKS.map((l) => (
             <Link
               key={l.href}
               href={withCode(l.href)}

@@ -7,7 +7,7 @@ const PK = 'SETTINGS';
 const SK = 'SITE';
 
 export interface SiteSettings {
-  homePage: 'landing' | 'menu';
+  homePage: 'landing' | 'menu' | 'postboda';
   showPostboda: boolean;
 }
 

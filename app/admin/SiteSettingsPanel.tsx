@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type HomePage = "landing" | "menu";
+type HomePage = "landing" | "menu" | "postboda";
 
 export default function SiteSettingsPanel() {
   const [homePage, setHomePage] = useState<HomePage>("landing");
@@ -54,6 +54,13 @@ export default function SiteSettingsPanel() {
       description:
         "Un menú con botones grandes y claros, ideal para que todos los invitados naveguen fácilmente.",
       preview: "/menu",
+    },
+    {
+      value: "postboda",
+      label: "Post-boda",
+      description:
+        "Muestra directamente la página post-boda en el inicio, con acceso a subir fotos y ver la galería.",
+      preview: "/postboda",
     },
   ];
 

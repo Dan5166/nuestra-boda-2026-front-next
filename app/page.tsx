@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSiteSettings } from "@/lib/siteSettings";
 import HomeClient from "./HomeClient";
+import PostbodaPage from "./postboda/page";
 
 export default async function Home({
   searchParams,
@@ -14,6 +15,10 @@ export default async function Home({
 
   if (settings.homePage === "menu") {
     redirect(params.code ? `/menu?code=${params.code}` : "/menu");
+  }
+
+  if (settings.homePage === "postboda") {
+    return <PostbodaPage />;
   }
 
   return <HomeClient />;
