@@ -28,7 +28,7 @@ export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
     const settings: SiteSettings = {
-      homePage: body.homePage === 'menu' ? 'menu' : 'landing',
+      homePage: ['menu', 'postboda'].includes(body.homePage) ? body.homePage : 'landing',
       showPostboda: body.showPostboda === true,
     };
     await saveSiteSettings(settings);
